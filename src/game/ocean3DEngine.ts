@@ -26,7 +26,7 @@ export interface OceanFishEntity {
   vx: number;
   vy: number;
   vz: number;
-  size: number; // comparable directly to playerSize
+  size: number;
   isHunter: boolean;
   wasOutgrownHunter: boolean;
   tailPhase: number;
@@ -53,6 +53,17 @@ interface Bubble3D {
   radius: number;
   speedY: number;
   wobblePhase: number;
+  fromTrail?: boolean;
+  alpha?: number;
+}
+
+interface PlanktonMote3D {
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  phase: number;
+  alpha: number;
 }
 
 interface ChompParticle3D {
@@ -65,6 +76,7 @@ interface ChompParticle3D {
   color: string;
   size: number;
   alpha: number;
+  ring?: boolean;
   text?: string;
 }
 
@@ -80,9 +92,9 @@ export interface HudSnapshot {
   activeHunterSmallNeeded: number;
   lives: number;
   maxLives: number;
+  isGameOver: boolean;
 }
 
-// Balanced 3D Ocean Reef Basin ("niet te groot maar ook zeker niet te klein")
 const WORLD_HALF_X = 76;
 const WORLD_HALF_Y = 40;
 const WORLD_HALF_Z = 48;
@@ -100,13 +112,13 @@ export class Ocean3DEngine {
   private time = 0;
   private nextEntityId = 1;
 
-  // Player 3D Piranha State
   public playerColor: PiranhaColorSkin = PIRANHA_COLORS[0];
   public fishEaten = 0;
   public bestFishEaten = 0;
-  public playerSize = 1.0; // Grows from 1.0 up to colossal
+  public playerSize = 1.0;
   public lives = 3;
   public readonly maxLives = 3;
+  public isGameOver = false;
 
   private playerX = 0;
   private playerY = 0;
@@ -114,20 +126,19 @@ export class Ocean3DEngine {
   private playerVx = 0;
   private playerVy = 0;
   private playerVz = 0;
-  private playerFacing = 1; // 1 = right, -1 = left
+  private playerFacing = 1;
   private playerPitch = 0;
   private playerTailPhase = 0;
-  private biteAnim = 0; // 1..0 jaw snap animation
+  private biteAnim = 0;
   private invulnTimer = 0;
   private chompCombo = 0;
   private chompComboTimer = 0;
+  private trailTimer = 0;
 
-  // Camera 3D position
   private camX = 0;
   private camY = 0;
-  private camZ = -62;
+  private camZ = -66;
 
-  // Controls
   public input: ControlInputState = {
     up: false,
     down: false,
@@ -141,6 +152,7 @@ export class Ocean3DEngine {
   private fishes: OceanFishEntity[] = [];
   private props: CoralProp3D[] = [];
   private bubbles: Bubble3D[] = [];
+  private motes: PlanktonMote3D[] = [];
   private particles: ChompParticle3D[] = [];
   private hunterCheckTimer = 0;
 
@@ -195,6 +207,7 @@ export class Ocean3DEngine {
     this.fishEaten = 0;
     this.playerSize = 1.0;
     this.lives = this.maxLives;
+    this.isGameOver = false;
     this.playerX = 0;
     this.playerY = 0;
     this.playerZ = 0;
@@ -216,15 +229,14 @@ export class Ocean3DEngine {
     this.props = [];
     const coralColors = [
       ['#f43f5e', '#fda4af'],
-      ['#a855f7', '#d8b4fe'],
+      ['#fb7185', '#fecdd3'],
       ['#f97316', '#fdba74'],
-      ['#ec4899', '#fbcfe8'],
-      ['#06b6d4', '#67e8f9'],
+      ['#14b8a6', '#5eead4'],
+      ['#0ea5e9', '#7dd3fc'],
       ['#eab308', '#fef08a'],
     ];
 
-    // Populate 3D ocean floor (-WORLD_HALF_Y) with coral reefs, kelp forests, rocks, and sunken chest
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < 44; i++) {
       const x = (Math.random() - 0.5) * (WORLD_HALF_X * 1.9);
       const z = (Math.random() - 0.5) * (WORLD_HALF_Z * 1.85);
       const y = -WORLD_HALF_Y;
@@ -233,9 +245,9 @@ export class Ocean3DEngine {
       const kind: CoralProp3D['kind'] =
         i === 0
           ? 'chest'
-          : roll < 0.28
+          : roll < 0.3
             ? 'kelp'
-            : roll < 0.52
+            : roll < 0.54
               ? 'coral_branch'
               : roll < 0.72
                 ? 'coral_brain'
@@ -255,29 +267,36 @@ export class Ocean3DEngine {
     }
 
     this.bubbles = [];
-    for (let i = 0; i < 48; i++) {
+    for (let i = 0; i < 40; i++) {
       this.bubbles.push({
         x: (Math.random() - 0.5) * WORLD_HALF_X * 1.8,
         y: (Math.random() - 0.5) * WORLD_HALF_Y * 1.8,
         z: (Math.random() - 0.5) * WORLD_HALF_Z * 1.8,
-        radius: 1.2 + Math.random() * 2.8,
-        speedY: 4 + Math.random() * 6,
+        radius: 1.0 + Math.random() * 2.2,
+        speedY: 3.5 + Math.random() * 5.0,
         wobblePhase: Math.random() * Math.PI * 2,
+      });
+    }
+
+    this.motes = [];
+    for (let i = 0; i < 55; i++) {
+      this.motes.push({
+        x: (Math.random() - 0.5) * WORLD_HALF_X * 1.9,
+        y: (Math.random() - 0.5) * WORLD_HALF_Y * 1.8,
+        z: (Math.random() - 0.5) * WORLD_HALF_Z * 1.8,
+        size: 0.7 + Math.random() * 1.4,
+        phase: Math.random() * Math.PI * 2,
+        alpha: 0.14 + Math.random() * 0.22,
       });
     }
   }
 
-  /**
-   * Guarantees that at all times 50% of the fish in the 3D sea are SMALLER than your Piranha
-   * and 50% of the fish are LARGER than your Piranha!
-   */
   private rebalance5050Ecosystem(initialSpawn = false): void {
-    const targetHalf = TOTAL_ACTIVE_FISH / 2; // 16 smaller, 16 larger
+    const targetHalf = TOTAL_ACTIVE_FISH / 2;
 
-    let smaller = this.fishes.filter((f) => f.size < this.playerSize);
-    let larger = this.fishes.filter((f) => f.size >= this.playerSize);
+    const smaller = this.fishes.filter((f) => f.size < this.playerSize);
+    const larger = this.fishes.filter((f) => f.size >= this.playerSize);
 
-    // If player outgrew some fish so there are too many smaller fish, convert the farthest excess smaller fish
     while (smaller.length > targetHalf) {
       smaller.sort(
         (a, b) =>
@@ -290,7 +309,6 @@ export class Ocean3DEngine {
       }
     }
 
-    // If there are too many larger fish, remove the farthest excess larger fish
     while (larger.length > targetHalf) {
       larger.sort(
         (a, b) =>
@@ -303,14 +321,11 @@ export class Ocean3DEngine {
       }
     }
 
-    // Re-count and spawn missing smaller fish (50%)
     while (this.fishes.filter((f) => f.size < this.playerSize).length < targetHalf) {
       this.fishes.push(this.spawnFishEntity('smaller', initialSpawn));
     }
 
-    // Re-count and spawn missing larger fish (50%)
     while (this.fishes.filter((f) => f.size >= this.playerSize).length < targetHalf) {
-      // Ensure at least 4 of the larger fish are only SLIGHTLY larger (1.04x - 1.16x) so 1% hunter rule has fair targets
       const slightlyLargerCount = this.fishes.filter(
         (f) => f.size >= this.playerSize * 1.03 && f.size <= this.playerSize * 1.18
       ).length;
@@ -327,14 +342,13 @@ export class Ocean3DEngine {
 
     let sizeRatio = 0.65;
     if (category === 'smaller') {
-      sizeRatio = 0.38 + Math.random() * 0.52; // 0.38x .. 0.90x of playerSize
+      sizeRatio = 0.38 + Math.random() * 0.52;
     } else if (category === 'slightly_larger') {
-      sizeRatio = 1.05 + Math.random() * 0.11; // 1.05x .. 1.16x of playerSize (outgrown in 2-3 bites!)
+      sizeRatio = 1.05 + Math.random() * 0.11;
     } else {
-      sizeRatio = 1.18 + Math.random() * 0.85; // 1.18x .. 2.03x of playerSize
+      sizeRatio = 1.18 + Math.random() * 0.85;
     }
 
-    // Pick 3D coordinates inside the ocean basin, keeping a safe distance from player on respawn
     let x = 0;
     let y = 0;
     let z = 0;
@@ -347,7 +361,7 @@ export class Ocean3DEngine {
     }
 
     const dir = Math.random() < 0.5 ? 1 : -1;
-    const spd = (6 + Math.random() * 5) * species.baseSpeed;
+    const spd = (5.5 + Math.random() * 4.5) * species.baseSpeed;
     return {
       id: this.nextEntityId++,
       species,
@@ -355,8 +369,8 @@ export class Ocean3DEngine {
       y,
       z,
       vx: dir * spd,
-      vy: (Math.random() - 0.5) * 2.5,
-      vz: (Math.random() - 0.5) * 3.0,
+      vy: (Math.random() - 0.5) * 2.2,
+      vz: (Math.random() - 0.5) * 2.8,
       size: this.playerSize * sizeRatio,
       isHunter: false,
       wasOutgrownHunter: false,
@@ -376,116 +390,126 @@ export class Ocean3DEngine {
       if (this.chompComboTimer <= 0) this.chompCombo = 0;
     }
 
-    // 1. Update Player 3D Piranha Movement from 4 Arrows + 1 Rotary Knob
-    let dirX = 0;
-    let dirY = 0;
+    if (!this.isGameOver) {
+      // 1. Update Player Piranha Movement
+      let dirX = 0;
+      let dirY = 0;
 
-    if (this.input.left) dirX -= 1;
-    if (this.input.right) dirX += 1;
-    if (this.input.up) dirY += 1; // Up arrow = swim upward toward water surface
-    if (this.input.down) dirY -= 1; // Down arrow = dive downward toward coral floor
+      if (this.input.left) dirX -= 1;
+      if (this.input.right) dirX += 1;
+      if (this.input.up) dirY += 1;
+      if (this.input.down) dirY -= 1;
 
-    if (this.input.knobActive && this.input.knobStrength > 0.08) {
-      // Screen-space knob angle: 0 = right, -PI/2 = up (positive 3D Y), +PI/2 = down (negative 3D Y)
-      dirX += Math.cos(this.input.knobAngleRad) * this.input.knobStrength * 1.15;
-      dirY += -Math.sin(this.input.knobAngleRad) * this.input.knobStrength * 1.15;
+      if (this.input.knobActive && this.input.knobStrength > 0.08) {
+        dirX += Math.cos(this.input.knobAngleRad) * this.input.knobStrength * 1.15;
+        dirY += -Math.sin(this.input.knobAngleRad) * this.input.knobStrength * 1.15;
+      }
+
+      const inputMag = Math.hypot(dirX, dirY);
+      const normX = inputMag > 1 ? dirX / inputMag : dirX;
+      const normY = inputMag > 1 ? dirY / inputMag : dirY;
+
+      const maxSpeed = 24;
+      const targetVx = normX * maxSpeed;
+      const targetVy = normY * maxSpeed;
+      const targetVz =
+        inputMag > 0.1
+          ? Math.sin(this.time * 1.6) * 7.5 + normY * 3.5
+          : -this.playerZ * 0.4;
+
+      const accel = inputMag > 0.05 ? 9.5 : 5.0;
+      this.playerVx += (targetVx - this.playerVx) * Math.min(1, accel * dt);
+      this.playerVy += (targetVy - this.playerVy) * Math.min(1, accel * dt);
+      this.playerVz += (targetVz - this.playerVz) * Math.min(1, 3.5 * dt);
+
+      this.playerX += this.playerVx * dt;
+      this.playerY += this.playerVy * dt;
+      this.playerZ += this.playerVz * dt;
+
+      if (this.playerX < -WORLD_HALF_X) {
+        this.playerX = -WORLD_HALF_X;
+        this.playerVx = Math.abs(this.playerVx) * 0.35;
+      } else if (this.playerX > WORLD_HALF_X) {
+        this.playerX = WORLD_HALF_X;
+        this.playerVx = -Math.abs(this.playerVx) * 0.35;
+      }
+      if (this.playerY < -WORLD_HALF_Y + 3.5) {
+        this.playerY = -WORLD_HALF_Y + 3.5;
+        this.playerVy = Math.abs(this.playerVy) * 0.35;
+      } else if (this.playerY > WORLD_HALF_Y - 3.5) {
+        this.playerY = WORLD_HALF_Y - 3.5;
+        this.playerVy = -Math.abs(this.playerVy) * 0.35;
+      }
+      if (this.playerZ < -WORLD_HALF_Z * 0.75) {
+        this.playerZ = -WORLD_HALF_Z * 0.75;
+      } else if (this.playerZ > WORLD_HALF_Z * 0.75) {
+        this.playerZ = WORLD_HALF_Z * 0.75;
+      }
+
+      if (Math.abs(this.playerVx) > 0.6) {
+        this.playerFacing = this.playerVx >= 0 ? 1 : -1;
+      }
+      const targetPitch = Math.max(-0.55, Math.min(0.55, (this.playerVy / maxSpeed) * 0.65));
+      this.playerPitch += (targetPitch - this.playerPitch) * Math.min(1, 10 * dt);
+
+      const swimSpeed = Math.hypot(this.playerVx, this.playerVy, this.playerVz);
+      this.playerTailPhase += dt * (7 + swimSpeed * 0.75);
+
+      // Subtle swim bubble trail behind fast-moving piranha
+      this.trailTimer += dt * (swimSpeed > 8 ? 1 : 0.2);
+      if (swimSpeed > 9 && this.trailTimer > 0.14 && this.bubbles.length < 70) {
+        this.trailTimer = 0;
+        this.bubbles.push({
+          x: this.playerX - this.playerFacing * 2.2,
+          y: this.playerY + (Math.random() - 0.5) * 1.2,
+          z: this.playerZ + (Math.random() - 0.5) * 1.2,
+          radius: 0.7 + Math.random() * 0.9,
+          speedY: 4.5 + Math.random() * 3.0,
+          wobblePhase: Math.random() * Math.PI * 2,
+          fromTrail: true,
+          alpha: 0.75,
+        });
+      }
+
+      this.camX += (this.playerX * 0.82 - this.camX) * Math.min(1, 6.5 * dt);
+      this.camY += (this.playerY * 0.82 - this.camY) * Math.min(1, 6.5 * dt);
+      this.camZ = -66;
+
+      // 2. Smart 1% Hunter Check
+      this.hunterCheckTimer += dt;
+      if (this.hunterCheckTimer >= 0.9) {
+        this.hunterCheckTimer = 0;
+        this.evaluateOnePercentHunterRule();
+      }
     }
 
-    const inputMag = Math.hypot(dirX, dirY);
-    const normX = inputMag > 1 ? dirX / inputMag : dirX;
-    const normY = inputMag > 1 ? dirY / inputMag : dirY;
-
-    const maxSpeed = 24;
-    const targetVx = normX * maxSpeed;
-    const targetVy = normY * maxSpeed;
-    // Gentle 3D depth (Z) weaving as you turn & swim so you traverse the full 3D sea volume smoothly
-    const targetVz =
-      inputMag > 0.1
-        ? Math.sin(this.time * 1.6) * 7.5 + normY * 3.5
-        : -this.playerZ * 0.4;
-
-    const accel = inputMag > 0.05 ? 9.5 : 5.0;
-    this.playerVx += (targetVx - this.playerVx) * Math.min(1, accel * dt);
-    this.playerVy += (targetVy - this.playerVy) * Math.min(1, accel * dt);
-    this.playerVz += (targetVz - this.playerVz) * Math.min(1, 3.5 * dt);
-
-    this.playerX += this.playerVx * dt;
-    this.playerY += this.playerVy * dt;
-    this.playerZ += this.playerVz * dt;
-
-    // Keep player inside the 3D Coral Reef Sea Basin with soft elastic reef bounce
-    if (this.playerX < -WORLD_HALF_X) {
-      this.playerX = -WORLD_HALF_X;
-      this.playerVx = Math.abs(this.playerVx) * 0.4;
-    } else if (this.playerX > WORLD_HALF_X) {
-      this.playerX = WORLD_HALF_X;
-      this.playerVx = -Math.abs(this.playerVx) * 0.4;
-    }
-    if (this.playerY < -WORLD_HALF_Y + 3.5) {
-      this.playerY = -WORLD_HALF_Y + 3.5;
-      this.playerVy = Math.abs(this.playerVy) * 0.4;
-    } else if (this.playerY > WORLD_HALF_Y - 3.5) {
-      this.playerY = WORLD_HALF_Y - 3.5;
-      this.playerVy = -Math.abs(this.playerVy) * 0.4;
-    }
-    if (this.playerZ < -WORLD_HALF_Z * 0.75) {
-      this.playerZ = -WORLD_HALF_Z * 0.75;
-    } else if (this.playerZ > WORLD_HALF_Z * 0.75) {
-      this.playerZ = WORLD_HALF_Z * 0.75;
-    }
-
-    if (Math.abs(this.playerVx) > 0.6) {
-      this.playerFacing = this.playerVx >= 0 ? 1 : -1;
-    }
-    const targetPitch = Math.max(-0.55, Math.min(0.55, (this.playerVy / maxSpeed) * 0.65));
-    this.playerPitch += (targetPitch - this.playerPitch) * Math.min(1, 10 * dt);
-
-    const swimSpeed = Math.hypot(this.playerVx, this.playerVy, this.playerVz);
-    this.playerTailPhase += dt * (7 + swimSpeed * 0.75);
-
-    // Smooth 3D Follow Camera
-    this.camX += (this.playerX * 0.82 - this.camX) * Math.min(1, 6.5 * dt);
-    this.camY += (this.playerY * 0.82 - this.camY) * Math.min(1, 6.5 * dt);
-    this.camZ = -66;
-
-    // 2. Smart 1% Slightly-Larger Hunter Check
-    this.hunterCheckTimer += dt;
-    if (this.hunterCheckTimer >= 0.9) {
-      this.hunterCheckTimer = 0;
-      this.evaluateOnePercentHunterRule();
-    }
-
-    // 3. Update All 32 3D Fish & Check Eating / Collision
+    // 3. Update All 32 Fish & Collisions
     let ateAnyFish = false;
-    let rankBefore = getPiranhaRank(this.fishEaten).rank;
+    const rankBefore = getPiranhaRank(this.fishEaten).rank;
 
     for (let i = this.fishes.length - 1; i >= 0; i--) {
       const f = this.fishes[i];
 
-      // Check if player just outgrew an active hunter by eating a couple of small fish!
       if (f.isHunter && this.playerSize > f.size) {
         f.isHunter = false;
         f.wasOutgrownHunter = true;
         this.sfx.playHunterTurnaround();
-        this.onToast(`💪 You outgrew the ${f.species.name}! Eat it now for 3x Bonus!`);
+        this.onToast(`Outgrew ${f.species.name} — eat for 3x bonus!`);
       }
-      // Also cancel hunter if player grew so much that this fish is no longer slightly larger, or if it somehow became way too big
       if (f.isHunter && f.size > this.playerSize * 1.24) {
         f.isHunter = false;
       }
 
-      if (f.isHunter) {
-        // Actively pursue player at moderate speed (slower than player maxSpeed = 24 so player can eat 2 small fish!)
+      if (f.isHunter && !this.isGameOver) {
         const dx = this.playerX - f.x;
         const dy = this.playerY - f.y;
         const dz = this.playerZ - f.z;
         const dist = Math.max(0.01, Math.hypot(dx, dy, dz));
-        const huntSpeed = 12.8;
+        const huntSpeed = 12.6;
         f.vx += ((dx / dist) * huntSpeed - f.vx) * Math.min(1, 4.0 * dt);
         f.vy += ((dy / dist) * huntSpeed - f.vy) * Math.min(1, 4.0 * dt);
         f.vz += ((dz / dist) * huntSpeed - f.vz) * Math.min(1, 4.0 * dt);
-      } else if (f.wasOutgrownHunter) {
-        // Panicked outgrown former hunter tries to flee away from player
+      } else if (f.wasOutgrownHunter && !this.isGameOver) {
         const dx = f.x - this.playerX;
         const dy = f.y - this.playerY;
         const dist = Math.max(0.01, Math.hypot(dx, dy));
@@ -493,25 +517,22 @@ export class Ocean3DEngine {
         f.vx += ((dx / dist) * fleeSpeed - f.vx) * Math.min(1, 3.5 * dt);
         f.vy += ((dy / dist) * fleeSpeed - f.vy) * Math.min(1, 3.5 * dt);
       } else {
-        // Natural 3D Reef Patrol
         f.patrolTimer -= dt;
         if (f.patrolTimer <= 0) {
           f.patrolTimer = 2.5 + Math.random() * 4.5;
-          const dir = Math.random() < 0.25 ? -f.facingX : f.facingX;
-          const spd = (5.5 + Math.random() * 5.5) * f.species.baseSpeed;
+          const dir = Math.random() < 0.22 ? -f.facingX : f.facingX;
+          const spd = (5.2 + Math.random() * 5.0) * f.species.baseSpeed;
           f.vx = dir * spd;
-          f.vy = (Math.random() - 0.5) * 4.0;
-          f.vz = (Math.random() - 0.5) * 4.5;
+          f.vy = (Math.random() - 0.5) * 3.6;
+          f.vz = (Math.random() - 0.5) * 4.0;
         }
-        // Keep Z near player depth softly so fish stay interactive in the 3D view
-        f.vz += (this.playerZ - f.z) * 0.18 * dt;
+        f.vz += (this.playerZ - f.z) * 0.16 * dt;
       }
 
       f.x += f.vx * dt;
       f.y += f.vy * dt;
       f.z += f.vz * dt;
 
-      // Turn back at 3D Ocean Basin boundaries
       if (f.x < -WORLD_HALF_X + 3) {
         f.x = -WORLD_HALF_X + 3;
         f.vx = Math.abs(f.vx);
@@ -540,7 +561,8 @@ export class Ocean3DEngine {
       f.pitchRad = Math.max(-0.48, Math.min(0.48, f.vy * 0.04));
       f.tailPhase += dt * (6.5 + Math.hypot(f.vx, f.vy) * 0.65);
 
-      // 3D Collision Check between Player Piranha and Fish
+      if (this.isGameOver) continue;
+
       const fishVisualRatio = Math.pow(f.size / this.playerSize, 0.42);
       const hitRadiusXY = 3.2 + Math.min(2.6, fishVisualRatio * 1.6);
       const distXY = Math.hypot(f.x - this.playerX, f.y - this.playerY);
@@ -548,13 +570,11 @@ export class Ocean3DEngine {
 
       if (distXY < hitRadiusXY && distZ < 14) {
         if (f.size <= this.playerSize * 1.01) {
-          // EAT SMALLER FISH!
           const bonusEaten = f.wasOutgrownHunter ? 3 : 1;
           this.fishEaten += bonusEaten;
           if (this.fishEaten > this.bestFishEaten) {
             this.bestFishEaten = this.fishEaten;
           }
-          // Smoothly grow Piranha by +6.5% per fish (so eating 2-3 small fish outgrows a 1.05x-1.15x hunter!)
           const growthFactor = f.wasOutgrownHunter ? 1.14 : 1.065;
           this.playerSize *= growthFactor;
           this.biteAnim = 1.0;
@@ -567,17 +587,16 @@ export class Ocean3DEngine {
             f.y,
             f.z,
             f.species.primaryColor,
-            f.wasOutgrownHunter ? `🦷 REVENGE +3!` : `+1 ${f.species.emoji}`
+            f.wasOutgrownHunter ? '+3 REVENGE' : '+1'
           );
 
           this.fishes.splice(i, 1);
           ateAnyFish = true;
         } else if (f.isHunter && this.invulnTimer <= 0) {
-          // Bitten by the slightly-larger 1% hunter!
           this.invulnTimer = 2.2;
-          this.lives = Math.max(1, this.lives - 1);
+          this.lives = Math.max(0, this.lives - 1);
           this.sfx.playBitten();
-          // Knock hunter back so player has room to eat 2 small fish
+
           const pushX = f.x >= this.playerX ? 1 : -1;
           f.vx = pushX * 16;
           f.x += pushX * 7;
@@ -586,10 +605,16 @@ export class Ocean3DEngine {
             this.playerX,
             this.playerY,
             this.playerZ,
-            '#ef4444',
-            '⚠️ BITTEN! Eat small fish!'
+            '#fb7185',
+            'BITTEN'
           );
-          this.onToast(`⚠️ Bitten by ${f.species.name}! Quickly eat 2 small fish to outgrow it!`);
+
+          if (this.lives <= 0) {
+            this.isGameOver = true;
+            f.isHunter = false;
+          } else {
+            this.onToast(`Bitten by ${f.species.name} — eat 2 small fish to outgrow it`);
+          }
           this.emitHud();
         }
       }
@@ -599,20 +624,31 @@ export class Ocean3DEngine {
       const rankNow = getPiranhaRank(this.fishEaten);
       if (rankNow.rank > rankBefore) {
         this.sfx.playRankUp();
-        this.onToast(`👑 GROWTH STAGE UP: ${rankNow.title}!`);
+        this.onToast(`Stage Up: Lv.${rankNow.rank} ${rankNow.title}`);
       }
       this.rebalance5050Ecosystem(false);
       this.emitHud();
     }
 
-    // 4. Update 3D Bubbles & Chomp Particles
-    for (const b of this.bubbles) {
+    // 4. Update Bubbles, Motes & Particles
+    for (let i = this.bubbles.length - 1; i >= 0; i--) {
+      const b = this.bubbles[i];
       b.y += b.speedY * dt;
-      b.x += Math.sin(this.time * 2 + b.wobblePhase) * 0.9 * dt;
-      if (b.y > WORLD_HALF_Y) {
+      b.x += Math.sin(this.time * 2 + b.wobblePhase) * 0.85 * dt;
+      if (b.fromTrail) {
+        b.alpha = (b.alpha ?? 0.7) - dt * 0.65;
+        if (b.alpha <= 0 || b.y > WORLD_HALF_Y) {
+          this.bubbles.splice(i, 1);
+        }
+      } else if (b.y > WORLD_HALF_Y) {
         b.y = -WORLD_HALF_Y;
         b.x = (Math.random() - 0.5) * WORLD_HALF_X * 1.8;
       }
+    }
+
+    for (const m of this.motes) {
+      m.y += Math.sin(this.time * 0.7 + m.phase) * 0.4 * dt;
+      m.x += Math.cos(this.time * 0.5 + m.phase) * 0.35 * dt;
     }
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -620,19 +656,18 @@ export class Ocean3DEngine {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
-      p.alpha -= dt * 1.15;
+      if (p.ring) {
+        p.size += dt * 28;
+        p.alpha -= dt * 1.65;
+      } else {
+        p.alpha -= dt * 1.25;
+      }
       if (p.alpha <= 0) {
         this.particles.splice(i, 1);
       }
     }
   }
 
-  /**
-   * Implements the 1% Hunter Rule:
-   * Only fish that are SLIGHTLY larger than the player (1.03x to 1.17x playerSize)
-   * can ever decide to hunt/attack the player (~1% per fish roll), so eating 2-3 small fish
-   * lets the player outgrow the attacker!
-   */
   private evaluateOnePercentHunterRule(): void {
     const activeHunter = this.fishes.find((f) => f.isHunter);
     if (activeHunter) {
@@ -640,18 +675,14 @@ export class Ocean3DEngine {
       return;
     }
 
-    // Candidate pool: ONLY fish that are slightly larger than the player (1.03x .. 1.17x)
     const slightlyLargerCandidates = this.fishes.filter(
       (f) => f.size > this.playerSize * 1.02 && f.size <= this.playerSize * 1.17
     );
-
     if (slightlyLargerCandidates.length === 0) return;
 
-    // 1% per-fish roll across the active school (~28% chance per second when no hunter is active)
     for (const candidate of slightlyLargerCandidates) {
       if (Math.random() < 0.06) {
         candidate.isHunter = true;
-        // Clamp its size to at most 1.13x playerSize so 2 small fish (1.065^2 = 1.134) ALWAYS outgrows it!
         candidate.size = Math.min(candidate.size, this.playerSize * 1.125);
         this.sfx.playHunterAlert();
         this.emitHud();
@@ -667,19 +698,33 @@ export class Ocean3DEngine {
     color: string,
     labelText?: string
   ): void {
-    for (let i = 0; i < 10; i++) {
-      const ang = (i / 10) * Math.PI * 2;
-      const spd = 4 + Math.random() * 8;
+    // Expanding water ripple ring
+    this.particles.push({
+      x,
+      y,
+      z,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      color: '#bae6fd',
+      size: 6,
+      alpha: 0.75,
+      ring: true,
+    });
+
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + Math.random() * 0.3;
+      const spd = 4 + Math.random() * 7;
       this.particles.push({
         x,
         y,
         z,
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd,
-        vz: (Math.random() - 0.5) * 5,
-        color: i % 2 === 0 ? color : '#fef08a',
-        size: 2.5 + Math.random() * 2.5,
-        alpha: 1,
+        vz: (Math.random() - 0.5) * 4,
+        color: i % 2 === 0 ? color : '#e0f2fe',
+        size: 1.8 + Math.random() * 1.8,
+        alpha: 0.9,
       });
     }
     if (labelText) {
@@ -690,9 +735,9 @@ export class Ocean3DEngine {
         vx: 0,
         vy: 5.5,
         vz: 0,
-        color: '#fef08a',
+        color: labelText === 'BITTEN' ? '#fda4af' : '#fef08a',
         size: 13,
-        alpha: 1.25,
+        alpha: 1.2,
         text: labelText,
       });
     }
@@ -709,7 +754,6 @@ export class Ocean3DEngine {
       smallNeeded = Math.max(1, Math.ceil(Math.log(ratio * 1.005) / Math.log(1.065)));
     }
 
-    // Physical size in cm grows from 12 cm up to colossal meters!
     const sizeCm = Math.round(12 * Math.pow(this.playerSize, 0.85));
 
     this.onHudChange({
@@ -720,10 +764,11 @@ export class Ocean3DEngine {
       rankNumber: rank.rank,
       smallerCount,
       largerCount,
-      activeHunterName: activeHunter ? `${activeHunter.species.emoji} ${activeHunter.species.name}` : null,
+      activeHunterName: activeHunter ? activeHunter.species.name : null,
       activeHunterSmallNeeded: smallNeeded,
       lives: this.lives,
       maxLives: this.maxLives,
+      isGameOver: this.isGameOver,
     });
   }
 
@@ -737,13 +782,13 @@ export class Ocean3DEngine {
   ): { sx: number; sy: number; scale: number; depth: number } | null {
     const dx = wx - this.camX;
     const dy = wy - this.camY;
-    const dz = wz - this.camZ; // camZ is -66, world z is in [-48..+48], so dz is in [18..114]
+    const dz = wz - this.camZ;
     if (dz <= 4) return null;
     const fov = Math.min(w, h) * 0.92;
     const scale = fov / dz;
     return {
       sx: w * 0.5 + dx * scale,
-      sy: h * 0.5 - dy * scale, // +Y in 3D is UP on screen
+      sy: h * 0.5 - dy * scale,
       scale,
       depth: dz,
     };
@@ -765,56 +810,69 @@ export class Ocean3DEngine {
     const w = rect.width || 390;
     const h = rect.height || 680;
 
-    // 1. Deep 3D Ocean Gradient Skybox
+    // 1. Sleek Multi-Stop Deep Ocean Backdrop
     const depthRatio = Math.max(0, Math.min(1, (WORLD_HALF_Y - this.camY) / (WORLD_HALF_Y * 2)));
     const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
-    bgGrad.addColorStop(0, '#0284c7');
-    bgGrad.addColorStop(0.35, '#0369a1');
-    bgGrad.addColorStop(0.75, '#0c4a6e');
-    bgGrad.addColorStop(1, depthRatio > 0.6 ? '#041e33' : '#082f49');
+    bgGrad.addColorStop(0, depthRatio < 0.35 ? '#0ea5e9' : '#0284c7');
+    bgGrad.addColorStop(0.28, '#0369a1');
+    bgGrad.addColorStop(0.68, '#083a5c');
+    bgGrad.addColorStop(1, '#03182b');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Volumetric 3D Sunbeams from Water Surface
+    // 2. Soft Diagonal Sunlit God Rays
     ctx.save();
-    for (let i = 0; i < 5; i++) {
-      const beamX = -WORLD_HALF_X * 0.7 + i * (WORLD_HALF_X * 0.35);
-      const topP = this.project3D(beamX + Math.sin(this.time * 0.6 + i) * 4, WORLD_HALF_Y, 10, w, h);
-      const botP = this.project3D(beamX - 10, -WORLD_HALF_Y, 10, w, h);
+    for (let i = 0; i < 6; i++) {
+      const beamX = -WORLD_HALF_X * 0.78 + i * (WORLD_HALF_X * 0.31);
+      const sway = Math.sin(this.time * 0.45 + i * 1.3) * 5;
+      const topP = this.project3D(beamX + sway, WORLD_HALF_Y, 14, w, h);
+      const botP = this.project3D(beamX - 14 + sway * 0.4, -WORLD_HALF_Y, 14, w, h);
       if (topP && botP) {
         const beamGrad = ctx.createLinearGradient(topP.sx, topP.sy, botP.sx, botP.sy);
-        beamGrad.addColorStop(0, 'rgba(186, 230, 253, 0.22)');
-        beamGrad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+        beamGrad.addColorStop(0, 'rgba(224, 247, 255, 0.16)');
+        beamGrad.addColorStop(0.65, 'rgba(56, 189, 248, 0.05)');
+        beamGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
         ctx.fillStyle = beamGrad;
         ctx.beginPath();
-        ctx.moveTo(topP.sx - 18, topP.sy);
-        ctx.lineTo(topP.sx + 18, topP.sy);
-        ctx.lineTo(botP.sx + 48, botP.sy);
-        ctx.lineTo(botP.sx - 48, botP.sy);
+        ctx.moveTo(topP.sx - 16, topP.sy);
+        ctx.lineTo(topP.sx + 16, topP.sy);
+        ctx.lineTo(botP.sx + 58, botP.sy);
+        ctx.lineTo(botP.sx - 58, botP.sy);
         ctx.closePath();
         ctx.fill();
       }
     }
     ctx.restore();
 
-    // 3. 3D Ocean Basin Wireframe / Reef Boundary Box & Sandy Ocean Floor Grid
+    // 3. Clean Organic Ocean Floor & Shimmering Surface (no wireframe grid!)
     this.draw3DOceanBasin(ctx, w, h);
 
-    // 4. Depth-Sorted 3D Render Queue (Corals, Kelp, 32 Fish, Player Piranha, Bubbles, Particles)
+    // 4. Drifting Plankton Motes for Subtle Depth Parallax
+    ctx.save();
+    for (const m of this.motes) {
+      const p = this.project3D(m.x, m.y, m.z, w, h);
+      if (!p) continue;
+      const r = Math.max(0.7, (m.size * p.scale) / 14);
+      ctx.fillStyle = `rgba(186, 230, 253, ${m.alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // 5. Depth-Sorted 3D Scene Queue
     type RenderItem = { depth: number; draw: () => void };
     const queue: RenderItem[] = [];
 
-    // Add 3D Coral Reef & Kelp Props
     for (const prop of this.props) {
       const p = this.project3D(prop.x, prop.y, prop.z, w, h);
       if (!p) continue;
       queue.push({
         depth: p.depth,
-        draw: () => this.draw3DProp(ctx, prop, p.sx, p.sy, p.scale),
+        draw: () => this.draw3DProp(ctx, prop, p.sx, p.sy, p.scale, p.depth),
       });
     }
 
-    // Add 3D Bubbles
     for (const b of this.bubbles) {
       const p = this.project3D(b.x, b.y, b.z, w, h);
       if (!p) continue;
@@ -823,22 +881,26 @@ export class Ocean3DEngine {
         draw: () => {
           const r = Math.max(1.2, (b.radius * p.scale) / 7.5);
           ctx.save();
-          ctx.strokeStyle = 'rgba(224, 242, 254, 0.55)';
+          ctx.globalAlpha = b.alpha ?? 0.65;
+          ctx.strokeStyle = 'rgba(224, 242, 254, 0.72)';
           ctx.fillStyle = 'rgba(186, 230, 253, 0.16)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
+          // Tiny bubble specular dot
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.beginPath();
+          ctx.arc(p.sx - r * 0.3, p.sy - r * 0.3, Math.max(0.6, r * 0.25), 0, Math.PI * 2);
+          ctx.fill();
           ctx.restore();
         },
       });
     }
 
-    // Visual growth factor for player: starts compact (0.68) as Baby Piranha and grows to huge (1.95)
     const playerScreenGrowth = Math.min(1.95, 0.68 + Math.log10(this.playerSize) * 0.72);
 
-    // Add 32 Ecosystem Fish
     for (const f of this.fishes) {
       const p = this.project3D(f.x, f.y, f.z, w, h);
       if (!p) continue;
@@ -850,32 +912,38 @@ export class Ocean3DEngine {
       });
     }
 
-    // Add Player 3D Piranha
-    const pp = this.project3D(this.playerX, this.playerY, this.playerZ, w, h);
-    if (pp) {
-      const playerRadiusPx = playerScreenGrowth * (pp.scale * 2.15);
-      queue.push({
-        depth: pp.depth,
-        draw: () => this.drawPlayer3DPiranha(ctx, pp.sx, pp.sy, playerRadiusPx, w, h),
-      });
+    if (!this.isGameOver) {
+      const pp = this.project3D(this.playerX, this.playerY, this.playerZ, w, h);
+      if (pp) {
+        const playerRadiusPx = playerScreenGrowth * (pp.scale * 2.15);
+        queue.push({
+          depth: pp.depth,
+          draw: () => this.drawPlayer3DPiranha(ctx, pp.sx, pp.sy, playerRadiusPx, w, h),
+        });
+      }
     }
 
-    // Sort farthest to nearest (Painter's Algorithm Z-buffer)
     queue.sort((a, b) => b.depth - a.depth);
     for (const item of queue) {
       item.draw();
     }
 
-    // 5. Render 3D Chomp Particles & Floating Labels on top
+    // 6. Particles & Ripples
     for (const pt of this.particles) {
       const p = this.project3D(pt.x, pt.y, pt.z, w, h);
       if (!p) continue;
       ctx.save();
       ctx.globalAlpha = Math.max(0, Math.min(1, pt.alpha));
-      if (pt.text) {
-        ctx.font = '900 13px system-ui, sans-serif';
+      if (pt.ring) {
+        ctx.strokeStyle = pt.color;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, pt.size, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (pt.text) {
+        ctx.font = '800 13px "Plus Jakarta Sans", system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.strokeStyle = '#082f49';
+        ctx.strokeStyle = 'rgba(3, 24, 43, 0.85)';
         ctx.lineWidth = 3.5;
         ctx.strokeText(pt.text, p.sx, p.sy);
         ctx.fillStyle = pt.color;
@@ -889,8 +957,24 @@ export class Ocean3DEngine {
       ctx.restore();
     }
 
-    // 6. Off-Screen Hunter Warning Arrow if a 1% Hunter is chasing from off-screen
-    this.drawHunterRadarArrow(ctx, w, h);
+    // 7. Subtle Edge Depth Vignette for Clean Framing
+    const vig = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.5,
+      Math.min(w, h) * 0.35,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.8
+    );
+    vig.addColorStop(0, 'rgba(3, 24, 43, 0)');
+    vig.addColorStop(1, 'rgba(2, 12, 24, 0.38)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, w, h);
+
+    // 8. Sleek Off-Screen Hunter Radar Arrow
+    if (!this.isGameOver) {
+      this.drawHunterRadarArrow(ctx, w, h);
+    }
 
     ctx.restore();
   }
@@ -898,17 +982,18 @@ export class Ocean3DEngine {
   private draw3DOceanBasin(ctx: CanvasRenderingContext2D, w: number, h: number): void {
     ctx.save();
 
-    // 1. 3D Sandy Ocean Floor Polygon (-WORLD_HALF_Y)
-    const fl1 = this.project3D(-WORLD_HALF_X, -WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
-    const fl2 = this.project3D(WORLD_HALF_X, -WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
-    const fl3 = this.project3D(WORLD_HALF_X, -WORLD_HALF_Y, WORLD_HALF_Z, w, h);
-    const fl4 = this.project3D(-WORLD_HALF_X, -WORLD_HALF_Y, WORLD_HALF_Z, w, h);
+    // 1. Smooth Shaded Ocean Sand Floor
+    const fl1 = this.project3D(-WORLD_HALF_X * 1.15, -WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
+    const fl2 = this.project3D(WORLD_HALF_X * 1.15, -WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
+    const fl3 = this.project3D(WORLD_HALF_X * 1.15, -WORLD_HALF_Y, WORLD_HALF_Z * 1.1, w, h);
+    const fl4 = this.project3D(-WORLD_HALF_X * 1.15, -WORLD_HALF_Y, WORLD_HALF_Z * 1.1, w, h);
 
     if (fl1 && fl2 && fl3 && fl4) {
       const sandGrad = ctx.createLinearGradient(0, fl3.sy, 0, fl1.sy);
-      sandGrad.addColorStop(0, '#0f3f5c');
-      sandGrad.addColorStop(0.5, '#1e5b7a');
-      sandGrad.addColorStop(1, '#ca8a04');
+      sandGrad.addColorStop(0, '#072a45');
+      sandGrad.addColorStop(0.42, '#0e4466');
+      sandGrad.addColorStop(0.82, '#2d687d');
+      sandGrad.addColorStop(1, '#8c7548');
       ctx.fillStyle = sandGrad;
       ctx.beginPath();
       ctx.moveTo(fl1.sx, fl1.sy);
@@ -918,41 +1003,37 @@ export class Ocean3DEngine {
       ctx.closePath();
       ctx.fill();
 
-      // Perspective 3D Caustic Grid Lines on Ocean Floor
-      ctx.strokeStyle = 'rgba(125, 211, 252, 0.18)';
-      ctx.lineWidth = 1;
-      const steps = 8;
-      for (let i = 0; i <= steps; i++) {
-        const x = -WORLD_HALF_X + (i / steps) * (WORLD_HALF_X * 2);
-        const pNear = this.project3D(x, -WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
-        const pFar = this.project3D(x, -WORLD_HALF_Y, WORLD_HALF_Z, w, h);
-        if (pNear && pFar) {
-          ctx.beginPath();
-          ctx.moveTo(pNear.sx, pNear.sy);
-          ctx.lineTo(pFar.sx, pFar.sy);
-          ctx.stroke();
+      // Gentle Organic Caustic Light Ripples on the Seafloor (replaces rigid wireframe grid)
+      ctx.save();
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.1)';
+      ctx.lineWidth = 2;
+      for (let row = 0; row < 5; row++) {
+        const z = -WORLD_HALF_Z * 0.65 + row * (WORLD_HALF_Z * 0.35);
+        ctx.beginPath();
+        for (let step = 0; step <= 14; step++) {
+          const x = -WORLD_HALF_X + (step / 14) * WORLD_HALF_X * 2;
+          const waveZ = z + Math.sin(this.time * 1.2 + step * 0.8 + row) * 3.5;
+          const pt = this.project3D(x, -WORLD_HALF_Y + 0.1, waveZ, w, h);
+          if (!pt) continue;
+          if (step === 0) ctx.moveTo(pt.sx, pt.sy);
+          else ctx.lineTo(pt.sx, pt.sy);
         }
+        ctx.stroke();
       }
-      for (let j = 0; j <= 6; j++) {
-        const z = -WORLD_HALF_Z + (j / 6) * (WORLD_HALF_Z * 2);
-        const pL = this.project3D(-WORLD_HALF_X, -WORLD_HALF_Y, z, w, h);
-        const pR = this.project3D(WORLD_HALF_X, -WORLD_HALF_Y, z, w, h);
-        if (pL && pR) {
-          ctx.beginPath();
-          ctx.moveTo(pL.sx, pL.sy);
-          ctx.lineTo(pR.sx, pR.sy);
-          ctx.stroke();
-        }
-      }
+      ctx.restore();
     }
 
-    // 2. Shimmering 3D Water Surface Ceiling (+WORLD_HALF_Y)
-    const sf1 = this.project3D(-WORLD_HALF_X, WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
-    const sf2 = this.project3D(WORLD_HALF_X, WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
-    const sf3 = this.project3D(WORLD_HALF_X, WORLD_HALF_Y, WORLD_HALF_Z, w, h);
-    const sf4 = this.project3D(-WORLD_HALF_X, WORLD_HALF_Y, WORLD_HALF_Z, w, h);
+    // 2. Shimmering Top Water Surface Meniscus
+    const sf1 = this.project3D(-WORLD_HALF_X * 1.15, WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
+    const sf2 = this.project3D(WORLD_HALF_X * 1.15, WORLD_HALF_Y, -WORLD_HALF_Z, w, h);
+    const sf3 = this.project3D(WORLD_HALF_X * 1.15, WORLD_HALF_Y, WORLD_HALF_Z * 1.1, w, h);
+    const sf4 = this.project3D(-WORLD_HALF_X * 1.15, WORLD_HALF_Y, WORLD_HALF_Z * 1.1, w, h);
     if (sf1 && sf2 && sf3 && sf4) {
-      ctx.fillStyle = 'rgba(125, 211, 252, 0.18)';
+      const surfGrad = ctx.createLinearGradient(0, sf1.sy, 0, sf3.sy);
+      surfGrad.addColorStop(0, 'rgba(224, 242, 254, 0.25)');
+      surfGrad.addColorStop(1, 'rgba(56, 189, 248, 0.04)');
+      ctx.fillStyle = surfGrad;
       ctx.beginPath();
       ctx.moveTo(sf1.sx, sf1.sy);
       ctx.lineTo(sf2.sx, sf2.sy);
@@ -960,30 +1041,12 @@ export class Ocean3DEngine {
       ctx.lineTo(sf4.sx, sf4.sy);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = 'rgba(186, 230, 253, 0.35)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
 
-    // 3. Translucent 3D Reef Boundary Frame (Left & Right Sea Walls)
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
-    ctx.lineWidth = 1.5;
-    if (fl1 && fl4 && sf1 && sf4) {
+      ctx.strokeStyle = 'rgba(224, 242, 254, 0.35)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(fl1.sx, fl1.sy);
-      ctx.lineTo(sf1.sx, sf1.sy);
-      ctx.lineTo(sf4.sx, sf4.sy);
-      ctx.lineTo(fl4.sx, fl4.sy);
-      ctx.closePath();
-      ctx.stroke();
-    }
-    if (fl2 && fl3 && sf2 && sf3) {
-      ctx.beginPath();
-      ctx.moveTo(fl2.sx, fl2.sy);
-      ctx.lineTo(sf2.sx, sf2.sy);
+      ctx.moveTo(sf4.sx, sf4.sy);
       ctx.lineTo(sf3.sx, sf3.sy);
-      ctx.lineTo(fl3.sx, fl3.sy);
-      ctx.closePath();
       ctx.stroke();
     }
 
@@ -995,72 +1058,116 @@ export class Ocean3DEngine {
     prop: CoralProp3D,
     sx: number,
     sy: number,
-    projScale: number
+    projScale: number,
+    depth: number
   ): void {
     const s = Math.max(4, (prop.scale * projScale) / 4.2);
+    const fogAlpha = Math.max(0.35, Math.min(0.95, 1.2 - depth / 135));
     ctx.save();
+    ctx.globalAlpha = fogAlpha;
     ctx.translate(sx, sy);
 
     if (prop.kind === 'kelp') {
-      ctx.strokeStyle = '#15803d';
-      ctx.lineWidth = Math.max(2, s * 0.28);
       ctx.lineCap = 'round';
-      for (const offset of [-s * 0.4, 0, s * 0.45]) {
+      for (const [idx, offset] of [-s * 0.42, 0, s * 0.44].entries()) {
+        const sway1 = Math.sin(this.time * 1.9 + prop.phase + idx * 0.6) * s * 0.55;
+        const sway2 = Math.cos(this.time * 1.6 + prop.phase + idx * 0.5) * s * 0.75;
+        ctx.strokeStyle = idx === 1 ? '#10b981' : '#059669';
+        ctx.lineWidth = Math.max(2, s * (idx === 1 ? 0.3 : 0.24));
         ctx.beginPath();
         ctx.moveTo(offset, 0);
-        const sway1 = Math.sin(this.time * 2 + prop.phase) * s * 0.6;
-        const sway2 = Math.cos(this.time * 1.8 + prop.phase) * s * 0.8;
-        ctx.bezierCurveTo(offset + sway1, -s * 1.6, offset - sway2, -s * 3.2, offset + sway1, -s * 4.8);
+        ctx.bezierCurveTo(
+          offset + sway1,
+          -s * 1.6,
+          offset - sway2,
+          -s * 3.2,
+          offset + sway1 * 0.8,
+          -s * (4.4 + (idx % 2) * 0.6)
+        );
         ctx.stroke();
       }
     } else if (prop.kind === 'coral_branch') {
       ctx.strokeStyle = prop.color;
-      ctx.lineWidth = Math.max(2.5, s * 0.35);
+      ctx.lineWidth = Math.max(2.5, s * 0.32);
       ctx.lineCap = 'round';
-      for (const ang of [-0.65, -0.25, 0.2, 0.6]) {
+      for (const ang of [-0.62, -0.22, 0.2, 0.6]) {
+        const tx = Math.sin(ang) * s * 2.1;
+        const ty = -Math.cos(ang) * s * 2.1;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(Math.sin(ang) * s * 2.1, -Math.cos(ang) * s * 2.1);
+        ctx.quadraticCurveTo(tx * 0.45, ty * 0.7, tx, ty);
         ctx.stroke();
+        ctx.fillStyle = prop.secondaryColor;
+        ctx.beginPath();
+        ctx.arc(tx, ty, Math.max(1.5, s * 0.16), 0, Math.PI * 2);
+        ctx.fill();
       }
     } else if (prop.kind === 'coral_brain') {
-      ctx.fillStyle = prop.color;
-      ctx.strokeStyle = prop.secondaryColor;
-      ctx.lineWidth = 1.5;
+      const grad = ctx.createRadialGradient(-s * 0.25, -s * 0.75, s * 0.1, 0, -s * 0.3, s * 1.15);
+      grad.addColorStop(0, prop.secondaryColor);
+      grad.addColorStop(1, prop.color);
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(0, -s * 0.4, s * 1.1, Math.PI, 0);
+      ctx.arc(0, -s * 0.2, s * 1.05, Math.PI, 0);
       ctx.closePath();
       ctx.fill();
-      ctx.stroke();
     } else if (prop.kind === 'anemone') {
-      ctx.fillStyle = prop.color;
       for (let i = -3; i <= 3; i++) {
-        const sway = Math.sin(this.time * 3 + i + prop.phase) * s * 0.2;
+        const sway = Math.sin(this.time * 2.6 + i + prop.phase) * s * 0.22;
+        ctx.strokeStyle = prop.color;
+        ctx.lineWidth = Math.max(1.8, s * 0.24);
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.ellipse(i * s * 0.28 + sway, -s * 0.9, s * 0.16, s * 0.9, 0, 0, Math.PI * 2);
+        ctx.moveTo(i * s * 0.22, 0);
+        ctx.quadraticCurveTo(i * s * 0.26 + sway, -s * 0.9, i * s * 0.3 + sway * 1.3, -s * 1.45);
+        ctx.stroke();
+        ctx.fillStyle = prop.secondaryColor;
+        ctx.beginPath();
+        ctx.arc(i * s * 0.3 + sway * 1.3, -s * 1.45, Math.max(1.2, s * 0.13), 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (prop.kind === 'chest') {
-      // Sunken Treasure Chest on the 3D reef floor
-      ctx.fillStyle = '#854d0e';
-      ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 2;
+      ctx.fillStyle = '#78350f';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.roundRect(-s * 1.4, -s * 1.6, s * 2.8, s * 1.6, 3);
+      ctx.roundRect(-s * 1.4, -s * 1.4, s * 2.8, s * 1.4, 4);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#fde047';
       ctx.beginPath();
-      ctx.arc(0, -s * 0.8, s * 0.3, 0, Math.PI * 2);
+      ctx.arc(0, -s * 0.75, s * 0.24, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      ctx.fillStyle = '#334155';
+      const rockGrad = ctx.createLinearGradient(0, -s * 1.1, 0, 0);
+      rockGrad.addColorStop(0, '#475569');
+      rockGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = rockGrad;
       ctx.beginPath();
-      ctx.ellipse(0, -s * 0.4, s * 1.3, s * 0.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, -s * 0.35, s * 1.3, s * 0.65, 0, Math.PI, 0);
+      ctx.closePath();
       ctx.fill();
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Draws a streamlined aerodynamic fish body using smooth Bezier curves instead of plain ovals.
+   */
+  private traceStreamlinedFishBody(
+    ctx: CanvasRenderingContext2D,
+    rx: number,
+    ry: number
+  ): void {
+    ctx.beginPath();
+    ctx.moveTo(rx * 1.02, 0); // Snout tip
+    ctx.bezierCurveTo(rx * 0.85, -ry * 0.78, rx * 0.12, -ry * 1.05, -rx * 0.45, -ry * 0.72);
+    ctx.bezierCurveTo(-rx * 0.72, -ry * 0.5, -rx * 0.88, -ry * 0.22, -rx * 0.96, -ry * 0.14);
+    ctx.lineTo(-rx * 0.96, ry * 0.14);
+    ctx.bezierCurveTo(-rx * 0.88, ry * 0.22, -rx * 0.72, ry * 0.5, -rx * 0.45, ry * 0.72);
+    ctx.bezierCurveTo(rx * 0.12, ry * 1.05, rx * 0.85, ry * 0.78, rx * 1.02, 0);
+    ctx.closePath();
   }
 
   private drawPlayer3DPiranha(
@@ -1071,13 +1178,13 @@ export class Ocean3DEngine {
     w: number,
     h: number
   ): void {
-    // 1. Cast 3D Shadow on the Ocean Floor directly below Player
+    // 1. Soft Floor Shadow
     const floorShadow = this.project3D(this.playerX, -WORLD_HALF_Y + 0.5, this.playerZ, w, h);
     if (floorShadow) {
       ctx.save();
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.32)';
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.26)';
       ctx.beginPath();
-      ctx.ellipse(floorShadow.sx, floorShadow.sy, r * 0.85, r * 0.28, 0, 0, Math.PI * 2);
+      ctx.ellipse(floorShadow.sx, floorShadow.sy, r * 0.8, r * 0.24, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -1085,173 +1192,172 @@ export class Ocean3DEngine {
     ctx.save();
     ctx.translate(sx, sy);
 
-    // Invulnerability Shield Bubble if recently bitten
+    // Invulnerability Shield Bubble
     if (this.invulnTimer > 0) {
+      const pulse = 0.65 + Math.sin(this.time * 14) * 0.25;
       ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-      ctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+      ctx.strokeStyle = `rgba(125, 211, 252, ${pulse})`;
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2);
+      ctx.arc(0, 0, r * 1.42, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
     }
 
-    // Ambient Piranha Glow Aura
-    const auraGrad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.55);
+    // Subtle Piranha Aura
+    const auraGrad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.5);
     auraGrad.addColorStop(0, this.playerColor.glow);
     auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = auraGrad;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 1.55, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.scale(this.playerFacing, 1);
     ctx.rotate(-this.playerPitch * this.playerFacing);
 
     const wag = Math.sin(this.playerTailPhase) * r * 0.22;
+    const strokeW = Math.max(1.4, r * 0.065);
 
-    // 1. Forked 3D Piranha Caudal Tail Fin
+    // 1. Sleek Forked Caudal Tail Fin
     ctx.fillStyle = this.playerColor.fin;
     ctx.strokeStyle = this.playerColor.outline;
-    ctx.lineWidth = Math.max(1.6, r * 0.08);
+    ctx.lineWidth = strokeW;
+    ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(-r * 0.82, 0);
-    ctx.lineTo(-r * 1.48, -r * 0.62 + wag);
-    ctx.lineTo(-r * 1.18, wag * 0.4);
-    ctx.lineTo(-r * 1.48, r * 0.62 + wag);
+    ctx.moveTo(-r * 0.85, 0);
+    ctx.quadraticCurveTo(-r * 1.25, -r * 0.45 + wag * 0.6, -r * 1.52, -r * 0.64 + wag);
+    ctx.quadraticCurveTo(-r * 1.32, -r * 0.15 + wag * 0.4, -r * 1.18, wag * 0.35);
+    ctx.quadraticCurveTo(-r * 1.32, r * 0.15 + wag * 0.4, -r * 1.52, r * 0.64 + wag);
+    ctx.quadraticCurveTo(-r * 1.25, r * 0.45 + wag * 0.6, -r * 0.85, 0);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // 2. Spiky Razor Dorsal Fin & Ventral Anal Fin
-    ctx.fillStyle = this.playerColor.fin;
+    // 2. Twin-Peaked Razor Dorsal Fin & Ventral Fin
     ctx.beginPath();
-    ctx.moveTo(-r * 0.45, -r * 0.58);
-    ctx.lineTo(-r * 0.15, -r * 1.05);
-    ctx.lineTo(r * 0.1, -r * 0.85);
-    ctx.lineTo(r * 0.28, -r * 0.62);
+    ctx.moveTo(-r * 0.46, -r * 0.54);
+    ctx.lineTo(-r * 0.28, -r * 0.96);
+    ctx.lineTo(-r * 0.06, -r * 0.78);
+    ctx.lineTo(r * 0.1, -r * 0.98);
+    ctx.lineTo(r * 0.28, -r * 0.6);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(-r * 0.5, r * 0.52);
-    ctx.lineTo(-r * 0.22, r * 0.92);
-    ctx.lineTo(r * 0.08, r * 0.58);
+    ctx.moveTo(-r * 0.48, r * 0.52);
+    ctx.lineTo(-r * 0.24, r * 0.88);
+    ctx.lineTo(r * 0.06, r * 0.58);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // 3. 3D Shaded Muscular Piranha Body
-    const bodyGrad = ctx.createRadialGradient(-r * 0.1, -r * 0.28, r * 0.1, 0, 0, r * 1.1);
+    // 3. Sculpted Piranha Body
+    const bodyGrad = ctx.createRadialGradient(-r * 0.08, -r * 0.28, r * 0.08, 0, 0, r * 1.1);
     bodyGrad.addColorStop(0, this.playerColor.primary);
-    bodyGrad.addColorStop(0.68, this.playerColor.secondary);
+    bodyGrad.addColorStop(0.7, this.playerColor.secondary);
     bodyGrad.addColorStop(1, this.playerColor.outline);
     ctx.fillStyle = bodyGrad;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 1.02, r * 0.76, 0, 0, Math.PI * 2);
+    this.traceStreamlinedFishBody(ctx, r * 1.0, r * 0.78);
     ctx.fill();
     ctx.stroke();
 
-    // 4. Characteristic Red-Belly / Colored Throat Underside
+    // 4. Clipped Belly & Top Specular Sheen
     ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, r * 0.98, r * 0.72, 0, 0, Math.PI * 2);
+    this.traceStreamlinedFishBody(ctx, r * 0.96, r * 0.74);
     ctx.clip();
     ctx.fillStyle = this.playerColor.belly;
     ctx.beginPath();
-    ctx.ellipse(r * 0.18, r * 0.48, r * 0.75, r * 0.42, 0, 0, Math.PI * 2);
+    ctx.ellipse(r * 0.16, r * 0.52, r * 0.8, r * 0.42, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Specular 3D Top Gloss Highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.26)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
     ctx.beginPath();
-    ctx.ellipse(-r * 0.05, -r * 0.42, r * 0.58, r * 0.18, -0.1, 0, Math.PI * 2);
+    ctx.ellipse(0, -r * 0.44, r * 0.54, r * 0.14, -0.08, 0, Math.PI * 2);
     ctx.fill();
+
+    // Subtle Gill Curve
+    ctx.strokeStyle = this.playerColor.outline;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = Math.max(1.2, r * 0.055);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(r * 0.16, r * 0.04, r * 0.34, -0.55, 0.7);
+    ctx.stroke();
     ctx.restore();
 
-    // 5. Piranha Bulldog Jaw & Interlocking White Razor Teeth (with chomp animation!)
-    const jawOpen = this.biteAnim * r * 0.26;
+    // 5. Piranha Bulldog Lower Jaw & Sleek Razor Teeth
+    const jawOpen = this.biteAnim * r * 0.24;
     ctx.fillStyle = this.playerColor.belly;
     ctx.strokeStyle = this.playerColor.outline;
+    ctx.lineWidth = strokeW * 0.9;
     ctx.beginPath();
-    ctx.moveTo(r * 0.45, r * 0.15 + jawOpen * 0.4);
-    ctx.quadraticCurveTo(r * 1.08, r * 0.35 + jawOpen, r * 1.05, -r * 0.02 + jawOpen * 0.5);
-    ctx.lineTo(r * 0.55, -r * 0.06);
+    ctx.moveTo(r * 0.44, r * 0.16 + jawOpen * 0.3);
+    ctx.quadraticCurveTo(r * 0.96, r * 0.4 + jawOpen, r * 1.04, -r * 0.02 + jawOpen * 0.45);
+    ctx.lineTo(r * 0.54, -r * 0.02);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Sharp White Triangular Piranha Teeth
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = this.playerColor.outline;
-    ctx.lineWidth = Math.max(1, r * 0.04);
+    ctx.lineWidth = Math.max(0.8, r * 0.032);
     for (let t = 0; t < 4; t++) {
-      const tx = r * (0.56 + t * 0.11);
-      const ty = r * 0.04 + jawOpen * 0.3;
+      const tx = r * (0.55 + t * 0.105);
+      const ty = r * 0.03 + jawOpen * 0.25;
       ctx.beginPath();
       ctx.moveTo(tx, ty);
-      ctx.lineTo(tx + r * 0.055, ty - r * 0.16);
-      ctx.lineTo(tx + r * 0.11, ty);
+      ctx.lineTo(tx + r * 0.05, ty - r * 0.14);
+      ctx.lineTo(tx + r * 0.1, ty);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     }
 
-    // 6. Fierce 3D Piranha Eye & Brow Ridge
+    // 6. Fierce Eye & Brow
     ctx.fillStyle = '#fef08a';
     ctx.strokeStyle = this.playerColor.outline;
-    ctx.lineWidth = Math.max(1.4, r * 0.06);
+    ctx.lineWidth = Math.max(1.2, r * 0.055);
     ctx.beginPath();
-    ctx.arc(r * 0.46, -r * 0.22, r * 0.21, 0, Math.PI * 2);
+    ctx.arc(r * 0.46, -r * 0.21, r * 0.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#0f172a';
     ctx.beginPath();
-    ctx.arc(r * 0.51, -r * 0.22, r * 0.11, 0, Math.PI * 2);
+    ctx.arc(r * 0.51, -r * 0.21, r * 0.105, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(r * 0.54, -r * 0.27, r * 0.045, 0, Math.PI * 2);
+    ctx.arc(r * 0.54, -r * 0.26, r * 0.042, 0, Math.PI * 2);
     ctx.fill();
 
-    // Fierce angled brow
     ctx.strokeStyle = this.playerColor.outline;
-    ctx.lineWidth = Math.max(2, r * 0.09);
+    ctx.lineWidth = Math.max(1.8, r * 0.085);
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(r * 0.26, -r * 0.42);
-    ctx.lineTo(r * 0.66, -r * 0.32);
+    ctx.moveTo(r * 0.27, -r * 0.39);
+    ctx.lineTo(r * 0.65, -r * 0.3);
     ctx.stroke();
 
-    // 7. Flapping 3D Side Pectoral Fin
+    // 7. Flapping Side Pectoral Fin
     const finFlap = Math.cos(this.playerTailPhase) * 0.25;
     ctx.save();
-    ctx.translate(r * 0.05, r * 0.18);
-    ctx.rotate(0.3 + finFlap);
+    ctx.translate(r * 0.06, r * 0.18);
+    ctx.rotate(0.28 + finFlap);
     ctx.fillStyle = this.playerColor.fin;
     ctx.strokeStyle = this.playerColor.outline;
-    ctx.lineWidth = Math.max(1.2, r * 0.06);
+    ctx.lineWidth = Math.max(1.1, r * 0.055);
     ctx.beginPath();
-    ctx.ellipse(-r * 0.18, r * 0.08, r * 0.26, r * 0.14, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(-r * 0.16, r * 0.07, r * 0.24, r * 0.12, -0.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
 
-    ctx.restore();
-
-    // 8. Player Tag Pill ("YOU")
-    ctx.save();
-    ctx.font = '900 10px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#fef08a';
-    ctx.strokeStyle = '#082f49';
-    ctx.lineWidth = 3;
-    ctx.strokeText('🦷 YOU', sx, sy - r * 1.18);
-    ctx.fillText('🦷 YOU', sx, sy - r * 1.18);
     ctx.restore();
   }
 
@@ -1265,16 +1371,15 @@ export class Ocean3DEngine {
     w: number,
     h: number
   ): void {
-    const isEdible = f.size <= this.playerSize * 1.01;
     const sp = f.species;
 
-    // 1. 3D Floor Shadow
+    // Floor Shadow
     const floorShadow = this.project3D(f.x, -WORLD_HALF_Y + 0.5, f.z, w, h);
     if (floorShadow) {
       ctx.save();
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.22)';
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.18)';
       ctx.beginPath();
-      ctx.ellipse(floorShadow.sx, floorShadow.sy, r * 0.75, r * 0.22, 0, 0, Math.PI * 2);
+      ctx.ellipse(floorShadow.sx, floorShadow.sy, r * 0.72, r * 0.2, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -1282,17 +1387,16 @@ export class Ocean3DEngine {
     ctx.save();
     ctx.translate(sx, sy);
 
-    // Subtle 3D Depth Fog Alpha
-    const fogAlpha = Math.max(0.55, Math.min(1, 1.25 - depth / 130));
+    const fogAlpha = Math.max(0.52, Math.min(1, 1.24 - depth / 132));
     ctx.globalAlpha = fogAlpha;
 
-    // 2. Status Ring (Green ring for 50% smaller edible fish, Red pulse ring for 1% Active Hunter!)
+    // Only highlight active 1% Hunter or Outgrown Revenge target (keeps ocean clean!)
     if (f.isHunter) {
-      const pulse = 1 + Math.sin(this.time * 9) * 0.12;
+      const pulse = 1 + Math.sin(this.time * 8) * 0.1;
       ctx.save();
-      ctx.strokeStyle = '#ef4444';
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.22)';
-      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#f43f5e';
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.16)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(0, 0, r * 1.38 * pulse, 0, Math.PI * 2);
       ctx.fill();
@@ -1300,20 +1404,12 @@ export class Ocean3DEngine {
       ctx.restore();
     } else if (f.wasOutgrownHunter) {
       ctx.save();
-      ctx.strokeStyle = '#10b981';
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = '#34d399';
+      ctx.fillStyle = 'rgba(52, 211, 153, 0.18)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, r * 1.35, 0, Math.PI * 2);
+      ctx.arc(0, 0, r * 1.34, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    } else if (isEdible) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 1.18, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -1322,203 +1418,249 @@ export class Ocean3DEngine {
     ctx.scale(f.facingX, 1);
     ctx.rotate(-f.pitchRad * f.facingX);
 
-    const wag = Math.sin(f.tailPhase) * r * 0.2;
+    const wag = Math.sin(f.tailPhase) * r * 0.18;
     const rx = r * sp.bodyAspect.length;
     const ry = r * sp.bodyAspect.height;
 
-    // 3. Species-Specific 3D Articulated Geometry (14 Distinct Species!)
     ctx.strokeStyle = sp.outlineColor;
-    ctx.lineWidth = Math.max(1.3, r * 0.07);
+    ctx.lineWidth = Math.max(1.1, r * 0.055);
+    ctx.lineJoin = 'round';
 
-    // Caudal Tail Fin
+    // 1. Caudal Tail Fin
+    ctx.save();
+    ctx.globalAlpha *= 0.92;
     ctx.fillStyle = sp.accentColor;
     ctx.beginPath();
-    ctx.moveTo(-rx * 0.82, 0);
-    ctx.lineTo(-rx * 1.42, -ry * 0.75 + wag);
-    ctx.lineTo(-rx * 1.15, wag * 0.35);
-    ctx.lineTo(-rx * 1.42, ry * 0.75 + wag);
+    ctx.moveTo(-rx * 0.85, 0);
+    ctx.quadraticCurveTo(-rx * 1.18, -ry * 0.55 + wag * 0.6, -rx * 1.42, -ry * 0.72 + wag);
+    ctx.quadraticCurveTo(-rx * 1.2, -ry * 0.12 + wag * 0.35, -rx * 1.14, wag * 0.35);
+    ctx.quadraticCurveTo(-rx * 1.2, ry * 0.12 + wag * 0.35, -rx * 1.42, ry * 0.72 + wag);
+    ctx.quadraticCurveTo(-rx * 1.18, ry * 0.55 + wag * 0.6, -rx * 0.85, 0);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 
-    // Dorsal & Ventral Fins
+    // 2. Dorsal & Specialty Fins
     if (sp.id === 'shark' || sp.id === 'hammerhead') {
-      // Tall Shark Dorsal Fin
       ctx.fillStyle = sp.primaryColor;
       ctx.beginPath();
-      ctx.moveTo(-rx * 0.25, -ry * 0.7);
-      ctx.lineTo(-rx * 0.05, -ry * 1.65);
-      ctx.lineTo(rx * 0.22, -ry * 0.75);
+      ctx.moveTo(-rx * 0.22, -ry * 0.65);
+      ctx.quadraticCurveTo(-rx * 0.1, -ry * 1.4, -rx * 0.04, -ry * 1.62);
+      ctx.quadraticCurveTo(rx * 0.12, -ry * 1.1, rx * 0.22, -ry * 0.7);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     } else if (sp.id === 'lionfish') {
-      // Fan of Lionfish Dorsal Quills
       ctx.strokeStyle = sp.secondaryColor;
-      ctx.lineWidth = Math.max(1.8, r * 0.09);
+      ctx.lineWidth = Math.max(1.5, r * 0.075);
       for (let q = -3; q <= 3; q++) {
         ctx.beginPath();
-        ctx.moveTo(q * rx * 0.14, -ry * 0.6);
-        ctx.lineTo(q * rx * 0.24, -ry * 1.55);
+        ctx.moveTo(q * rx * 0.13, -ry * 0.58);
+        ctx.lineTo(q * rx * 0.22, -ry * 1.48);
         ctx.stroke();
       }
       ctx.strokeStyle = sp.outlineColor;
+      ctx.lineWidth = Math.max(1.1, r * 0.055);
     } else if (sp.id === 'mantaray') {
-      // Flapping Diamond Manta Wings
-      const flap = Math.sin(f.tailPhase) * ry * 0.9;
+      const flap = Math.sin(f.tailPhase) * ry * 0.85;
       ctx.fillStyle = sp.primaryColor;
       ctx.beginPath();
-      ctx.moveTo(-rx * 0.6, 0);
-      ctx.lineTo(0, -ry * 2.4 + flap);
-      ctx.lineTo(rx * 0.7, 0);
-      ctx.lineTo(0, ry * 2.1 + flap);
+      ctx.moveTo(-rx * 0.65, 0);
+      ctx.quadraticCurveTo(-rx * 0.1, -ry * 1.4 + flap * 0.4, 0, -ry * 2.35 + flap);
+      ctx.quadraticCurveTo(rx * 0.38, -ry * 1.1 + flap * 0.3, rx * 0.74, 0);
+      ctx.quadraticCurveTo(rx * 0.38, ry * 1.1 + flap * 0.3, 0, ry * 2.05 + flap);
+      ctx.quadraticCurveTo(-rx * 0.1, ry * 1.4 + flap * 0.4, -rx * 0.65, 0);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     } else {
       ctx.fillStyle = sp.accentColor;
       ctx.beginPath();
-      ctx.moveTo(-rx * 0.4, -ry * 0.75);
-      ctx.quadraticCurveTo(0, -ry * 1.35, rx * 0.28, -ry * 0.75);
+      ctx.moveTo(-rx * 0.38, -ry * 0.66);
+      ctx.quadraticCurveTo(-rx * 0.05, -ry * 1.3, rx * 0.26, -ry * 0.68);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     }
 
-    // Main 3D Shaded Body
-    const bodyGrad = ctx.createRadialGradient(-rx * 0.1, -ry * 0.25, r * 0.1, 0, 0, Math.max(rx, ry));
+    // 3. Sculpted Body (Continuous smooth ribbon for Moray Eel, streamlined Bezier for others)
+    const bodyGrad = ctx.createRadialGradient(-rx * 0.08, -ry * 0.25, r * 0.08, 0, 0, Math.max(rx, ry));
     bodyGrad.addColorStop(0, sp.primaryColor);
-    bodyGrad.addColorStop(0.75, sp.secondaryColor);
+    bodyGrad.addColorStop(0.76, sp.secondaryColor);
     bodyGrad.addColorStop(1, sp.outlineColor);
     ctx.fillStyle = bodyGrad;
 
     if (sp.id === 'morayeel') {
-      // Multi-segment undulating serpent eel body
-      for (let seg = 4; seg >= 0; seg--) {
-        const sxOff = (seg - 2) * rx * 0.34;
-        const syOff = Math.sin(f.tailPhase + seg * 0.8) * ry * 0.45;
-        ctx.beginPath();
-        ctx.arc(sxOff, syOff, ry * (0.95 - (4 - seg) * 0.08), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+      const pts: Array<{ x: number; y: number; w: number }> = [];
+      for (let seg = 0; seg <= 8; seg++) {
+        const t = seg / 8;
+        pts.push({
+          x: -rx * 0.9 + t * rx * 1.85,
+          y: Math.sin(f.tailPhase + seg * 0.7) * ry * 0.55,
+          w: ry * (0.35 + Math.sin(t * Math.PI * 0.85) * 0.58),
+        });
       }
-    } else {
       ctx.beginPath();
-      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      for (let sIdx = 0; sIdx < pts.length; sIdx++) {
+        const pt = pts[sIdx];
+        if (sIdx === 0) ctx.moveTo(pt.x, pt.y - pt.w);
+        else ctx.lineTo(pt.x, pt.y - pt.w);
+      }
+      for (let sIdx = pts.length - 1; sIdx >= 0; sIdx--) {
+        const pt = pts[sIdx];
+        ctx.lineTo(pt.x, pt.y + pt.w);
+      }
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
-    }
+    } else {
+      this.traceStreamlinedFishBody(ctx, rx, ry);
+      ctx.fill();
+      ctx.stroke();
 
-    // Species Markings & 3D Anatomical Features
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx * 0.96, ry * 0.94, 0, 0, Math.PI * 2);
-    ctx.clip();
+      // Clipped Species Patterns & Gloss Highlight
+      ctx.save();
+      this.traceStreamlinedFishBody(ctx, rx * 0.96, ry * 0.94);
+      ctx.clip();
 
-    if (sp.pattern === 'bands' || sp.pattern === 'stripes') {
-      ctx.fillStyle = sp.secondaryColor;
-      for (const bx of [-rx * 0.42, 0, rx * 0.38]) {
-        ctx.fillRect(bx - rx * 0.1, -ry, rx * 0.18, ry * 2);
+      if (sp.pattern === 'bands' || sp.pattern === 'stripes') {
+        ctx.fillStyle = sp.secondaryColor;
+        ctx.globalAlpha *= 0.85;
+        for (const bx of [-rx * 0.38, 0, rx * 0.36]) {
+          ctx.beginPath();
+          ctx.ellipse(bx, 0, rx * 0.09, ry * 1.1, 0.12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (sp.pattern === 'spots') {
+        ctx.fillStyle = sp.accentColor;
+        ctx.globalAlpha *= 0.8;
+        for (const [px, py] of [
+          [-0.32, -0.22],
+          [0.02, 0.24],
+          [0.24, -0.24],
+          [-0.14, -0.35],
+        ]) {
+          ctx.beginPath();
+          ctx.arc(px * rx, py * ry, Math.max(1.2, r * 0.1), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-    } else if (sp.pattern === 'spots') {
-      ctx.fillStyle = sp.accentColor;
-      for (const [px, py] of [
-        [-0.35, -0.2],
-        [0, 0.25],
-        [0.25, -0.25],
-        [-0.15, -0.35],
-      ]) {
-        ctx.beginPath();
-        ctx.arc(px * rx, py * ry, r * 0.12, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
 
-    // 3D Top Specular Highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
-    ctx.beginPath();
-    ctx.ellipse(0, -ry * 0.52, rx * 0.55, ry * 0.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // Special 3D Snout / Spines / Lure per Species
-    if (sp.id === 'swordfish') {
-      // Long 3D Sword Bill
-      ctx.fillStyle = '#bae6fd';
+      // Glossy Dorsal Highlight
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
       ctx.beginPath();
-      ctx.moveTo(rx * 0.85, -ry * 0.12);
-      ctx.lineTo(rx * 1.85, 0);
-      ctx.lineTo(rx * 0.85, ry * 0.12);
+      ctx.ellipse(0, -ry * 0.5, rx * 0.52, ry * 0.17, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Subtle Gill Arc
+      ctx.strokeStyle = sp.outlineColor;
+      ctx.globalAlpha = 0.38;
+      ctx.lineWidth = Math.max(1, r * 0.045);
+      ctx.beginPath();
+      ctx.arc(rx * 0.25, 0, ry * 0.45, -0.5, 0.6);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // 4. Special Species Snout / Spines / Lure
+    if (sp.id === 'swordfish') {
+      ctx.fillStyle = '#e0f2fe';
+      ctx.beginPath();
+      ctx.moveTo(rx * 0.85, -ry * 0.1);
+      ctx.lineTo(rx * 1.82, 0);
+      ctx.lineTo(rx * 0.85, ry * 0.1);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
     } else if (sp.id === 'anglerfish') {
-      // Glowing Bioluminescent Lantern Lure
       ctx.strokeStyle = '#fde047';
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(rx * 0.35, -ry * 0.7);
-      ctx.quadraticCurveTo(rx * 0.95, -ry * 1.45, rx * 1.15, -ry * 0.65);
+      ctx.moveTo(rx * 0.35, -ry * 0.68);
+      ctx.quadraticCurveTo(rx * 0.92, -ry * 1.4, rx * 1.12, -ry * 0.6);
       ctx.stroke();
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.35)';
+      ctx.beginPath();
+      ctx.arc(rx * 1.12, -ry * 0.6, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
-      ctx.arc(rx * 1.15, -ry * 0.65, r * 0.18, 0, Math.PI * 2);
+      ctx.arc(rx * 1.12, -ry * 0.6, r * 0.14, 0, Math.PI * 2);
       ctx.fill();
     } else if (sp.id === 'pufferfish') {
-      // 3D Protruding Puffer Spines
       ctx.fillStyle = '#fef08a';
       for (let a = 0; a < 10; a++) {
         const ang = (a / 10) * Math.PI * 2;
-        const px = Math.cos(ang) * rx * 1.05;
-        const py = Math.sin(ang) * ry * 1.05;
+        const px = Math.cos(ang) * rx * 1.03;
+        const py = Math.sin(ang) * ry * 1.03;
         ctx.beginPath();
-        ctx.arc(px, py, r * 0.1, 0, Math.PI * 2);
+        ctx.arc(px, py, Math.max(1, r * 0.085), 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (sp.id === 'hammerhead') {
-      // 3D T-Shaped Hammer Cephalofoil
       ctx.fillStyle = sp.primaryColor;
       ctx.beginPath();
-      ctx.roundRect(rx * 0.65, -ry * 0.85, rx * 0.35, ry * 1.7, 4);
+      ctx.roundRect(rx * 0.68, -ry * 0.82, rx * 0.32, ry * 1.64, 4);
       ctx.fill();
       ctx.stroke();
     }
 
-    // Eye (Glowing Red if active 1% Hunter!)
-    ctx.fillStyle = f.isHunter ? '#ef4444' : '#ffffff';
+    // 5. Crisp Fish Eye
+    ctx.fillStyle = f.isHunter ? '#fb7185' : '#ffffff';
     ctx.beginPath();
-    ctx.arc(rx * 0.52, -ry * 0.2, r * 0.17, 0, Math.PI * 2);
+    ctx.arc(rx * 0.5, -ry * 0.18, Math.max(1.6, r * 0.16), 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = f.isHunter ? '#fef08a' : '#0f172a';
     ctx.beginPath();
-    ctx.arc(rx * 0.56, -ry * 0.2, r * 0.085, 0, Math.PI * 2);
+    ctx.arc(rx * 0.54, -ry * 0.18, Math.max(1, r * 0.085), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(rx * 0.56, -ry * 0.22, Math.max(0.6, r * 0.032), 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
 
-    // 4. Floating Label for 1% Hunter or Outgrown Hunter
+    // 6. Clean Hunter / Revenge Tag
     if (f.isHunter) {
-      ctx.font = '900 10px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = '#450a0a';
-      ctx.lineWidth = 3;
-      const txt = '⚠️ HUNTER! (Eat 2 small!)';
-      ctx.strokeText(txt, 0, -r * 1.25);
-      ctx.fillStyle = '#fca5a5';
-      ctx.fillText(txt, 0, -r * 1.25);
+      this.drawFloatingTag(ctx, 'HUNTER', 0, -r * 1.25, '#fecdd3', '#881337');
     } else if (f.wasOutgrownHunter) {
-      ctx.font = '900 10px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = '#064e3b';
-      ctx.lineWidth = 3;
-      const txt = '🟢 OUTGROWN! (3x Bonus!)';
-      ctx.strokeText(txt, 0, -r * 1.25);
-      ctx.fillStyle = '#6ee7b7';
-      ctx.fillText(txt, 0, -r * 1.25);
+      this.drawFloatingTag(ctx, '3x BONUS', 0, -r * 1.25, '#a7f3d0', '#064e3b');
     }
 
+    ctx.restore();
+  }
+
+  private drawFloatingTag(
+    ctx: CanvasRenderingContext2D,
+    label: string,
+    x: number,
+    y: number,
+    fg: string,
+    bg: string
+  ): void {
+    ctx.save();
+    ctx.font = '800 9px "Plus Jakarta Sans", system-ui, sans-serif';
+    const textW = ctx.measureText(label).width;
+    const padX = 6;
+    const pillW = textW + padX * 2;
+    const pillH = 16;
+    ctx.fillStyle = bg;
+    ctx.globalAlpha = 0.88;
+    ctx.beginPath();
+    ctx.roundRect(x - pillW / 2, y - pillH / 2, pillW, pillH, 8);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + 0.5);
     ctx.restore();
   }
 
@@ -1527,23 +1669,26 @@ export class Ocean3DEngine {
     if (!hunter) return;
     const p = this.project3D(hunter.x, hunter.y, hunter.z, w, h);
     if (!p) return;
-    if (p.sx >= 24 && p.sx <= w - 24 && p.sy >= 60 && p.sy <= h - 90) return;
+    if (p.sx >= 24 && p.sx <= w - 24 && p.sy >= 72 && p.sy <= h - 96) return;
 
-    const cx = Math.max(34, Math.min(w - 34, p.sx));
-    const cy = Math.max(85, Math.min(h - 110, p.sy));
+    const cx = Math.max(28, Math.min(w - 28, p.sx));
+    const cy = Math.max(82, Math.min(h - 108, p.sy));
+    const ang = Math.atan2(p.sy - h * 0.5, p.sx - w * 0.5);
+
     ctx.save();
-    ctx.fillStyle = 'rgba(220, 38, 38, 0.92)';
-    ctx.strokeStyle = '#fde047';
-    ctx.lineWidth = 2;
+    ctx.translate(cx, cy);
+    ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(225, 29, 72, 0.92)';
+    ctx.strokeStyle = '#fecdd3';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+    ctx.moveTo(11, 0);
+    ctx.lineTo(-7, -7);
+    ctx.lineTo(-4, 0);
+    ctx.lineTo(-7, 7);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.font = '900 12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText('⚠️', cx, cy);
     ctx.restore();
   }
 }
