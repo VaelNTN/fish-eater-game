@@ -1,17 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
-
 :root {
   --bg-deep: #03182b;
   --glass-bg: rgba(4, 24, 44, 0.58);
-  --glass-strong: rgba(5, 28, 52, 0.84);
-  --glass-border: rgba(148, 210, 255, 0.2);
+  --glass-strong: rgba(5, 28, 52, 0.86);
+  --glass-border: rgba(148, 210, 255, 0.22);
   --glass-highlight: rgba(255, 255, 255, 0.12);
   --accent-gold: #fde047;
   --accent-cyan: #38bdf8;
   --accent-emerald: #34d399;
   --accent-danger: #fb7185;
-  --font-display: 'Fredoka', system-ui, -apple-system, sans-serif;
-  --font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-display: ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 * {
@@ -19,6 +17,12 @@
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 html,
@@ -49,15 +53,19 @@ body,
   touch-action: none;
 }
 
+.fe-hidden {
+  display: none !important;
+}
+
 /* ==================== SLEEK TOP HUD ==================== */
 .fe-top-hud {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
-  left: 12px;
-  right: 12px;
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   pointer-events: none;
   z-index: 20;
 }
@@ -66,16 +74,17 @@ body,
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .fe-score-card {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 13px 7px 9px;
-  border-radius: 18px;
+  gap: 8px;
+  padding: 6px 11px 6px 8px;
+  border-radius: 16px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   box-shadow:
@@ -83,12 +92,13 @@ body,
     inset 0 1px 0 var(--glass-highlight);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  min-width: 0;
 }
 
 .fe-emblem {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: rgba(14, 165, 233, 0.16);
   border: 1px solid rgba(125, 211, 252, 0.22);
   display: flex;
@@ -100,37 +110,38 @@ body,
 .fe-score-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
 }
 
 .fe-score-top {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 5px;
 }
 
 .fe-eaten-value {
   font-family: var(--font-display);
-  font-size: 21px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
   line-height: 1;
   color: #fef08a;
   letter-spacing: -0.02em;
 }
 
 .fe-eaten-unit {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: rgba(186, 230, 253, 0.78);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
 .fe-lives-row {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: 4px;
+  margin-left: 3px;
   transform: translateY(1px);
 }
 
@@ -140,8 +151,8 @@ body,
 }
 
 .fe-heart-svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .fe-heart.alive {
@@ -157,11 +168,13 @@ body,
 .fe-score-sub {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 10.5px;
   font-weight: 600;
   color: rgba(226, 232, 240, 0.85);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fe-rank-pill {
@@ -178,24 +191,25 @@ body,
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  flex-shrink: 0;
 }
 
 .fe-pill-btn,
 .fe-icon-btn {
-  height: 36px;
+  height: 34px;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   color: #e2e8f0;
-  border-radius: 12px;
+  border-radius: 11px;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow:
@@ -205,11 +219,11 @@ body,
 }
 
 .fe-pill-btn {
-  padding: 0 10px;
+  padding: 0 9px;
 }
 
 .fe-icon-btn {
-  width: 36px;
+  width: 34px;
   padding: 0;
 }
 
@@ -219,8 +233,8 @@ body,
 }
 
 .fe-skin-dot {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
@@ -231,7 +245,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -240,11 +254,11 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 3px 9px;
   border-radius: 999px;
-  background: rgba(4, 22, 42, 0.5);
+  background: rgba(4, 22, 42, 0.52);
   border: 1px solid rgba(148, 210, 255, 0.16);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
   backdrop-filter: blur(10px);
@@ -260,13 +274,10 @@ body,
 }
 
 .fe-color-drawer {
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(-6px) scale(0.97);
-  transform-origin: top right;
-  transition: opacity 0.18s ease, transform 0.18s ease;
-  padding: 6px 9px;
-  border-radius: 14px;
+  display: none;
+  pointer-events: auto;
+  padding: 5px 8px;
+  border-radius: 13px;
   background: var(--glass-strong);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(16px);
@@ -278,9 +289,7 @@ body,
 }
 
 .fe-color-drawer.open {
-  pointer-events: auto;
-  opacity: 1;
-  transform: translateY(0) scale(1);
+  display: block;
 }
 
 .fe-color-drawer::-webkit-scrollbar {
@@ -305,7 +314,7 @@ body,
 }
 
 .fe-swatch-btn.active {
-  transform: scale(1.18);
+  transform: scale(1.16);
   border-color: #fef08a;
   box-shadow:
     0 0 0 2px rgba(250, 204, 21, 0.55),
@@ -315,22 +324,24 @@ body,
 /* ==================== HUNTER ALERT BANNER ==================== */
 .fe-hunter-alert {
   align-self: center;
-  padding: 5px 13px;
+  padding: 4px 12px;
   border-radius: 999px;
-  background: rgba(136, 19, 55, 0.85);
-  border: 1px solid rgba(251, 113, 133, 0.7);
+  background: rgba(136, 19, 55, 0.88);
+  border: 1px solid rgba(251, 113, 133, 0.72);
   color: #ffe4e6;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   backdrop-filter: blur(10px);
   box-shadow: 0 6px 20px rgba(190, 18, 60, 0.4);
   display: none;
+  max-width: 100%;
+  text-align: center;
 }
 
 .fe-hunter-alert.visible {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   animation: feHunterPulse 1.1s infinite alternate ease-in-out;
 }
 
@@ -340,6 +351,7 @@ body,
   border-radius: 50%;
   background: #fb7185;
   box-shadow: 0 0 8px #fb7185;
+  flex-shrink: 0;
 }
 
 @keyframes feHunterPulse {
@@ -351,29 +363,30 @@ body,
   }
 }
 
-/* ==================== TOAST MESSAGE ==================== */
+/* ==================== DYNAMIC TOAST (ANCHORED BELOW TOP HUD) ==================== */
 .fe-toast {
   position: absolute;
-  top: 108px;
+  top: calc(100% + 8px);
   left: 50%;
-  transform: translateX(-50%) translateY(-8px);
-  padding: 6px 14px;
+  transform: translateX(-50%) translateY(-6px);
+  padding: 5px 13px;
   border-radius: 999px;
-  background: rgba(5, 28, 52, 0.86);
-  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(5, 28, 52, 0.9);
+  border: 1px solid rgba(125, 211, 252, 0.36);
   color: #e0f2fe;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 700;
   white-space: nowrap;
-  max-width: 90vw;
+  max-width: min(92vw, 380px);
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
   pointer-events: none;
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition: opacity 0.2s ease, transform 0.2s ease;
   z-index: 30;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
 }
 
 .fe-toast.visible {
@@ -381,15 +394,16 @@ body,
   transform: translateX(-50%) translateY(0);
 }
 
-/* ==================== SLEEK TRANSLUCENT DUAL CONTROLS ==================== */
+/* ==================== SLEEK TRANSLUCENT DUAL CONTROLS + DASH ==================== */
 .fe-controls-dock {
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: max(16px, env(safe-area-inset-bottom));
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  gap: 8px;
   pointer-events: none;
   z-index: 25;
 }
@@ -407,12 +421,12 @@ body,
 
 .fe-dpad-grid {
   display: grid;
-  grid-template-columns: repeat(3, 46px);
-  grid-template-rows: repeat(3, 46px);
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
   gap: 4px;
-  padding: 7px;
-  border-radius: 28px;
-  background: rgba(4, 22, 42, 0.42);
+  padding: 6px;
+  border-radius: 26px;
+  background: rgba(4, 22, 42, 0.44);
   border: 1px solid rgba(148, 210, 255, 0.2);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -422,9 +436,9 @@ body,
 }
 
 .fe-arrow-btn {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
   border: 1px solid rgba(186, 230, 253, 0.22);
   background: rgba(12, 74, 110, 0.45);
   color: #e0f2fe;
@@ -440,8 +454,8 @@ body,
 .fe-arrow-btn.pressed,
 .fe-arrow-btn:active {
   transform: scale(0.91);
-  background: rgba(14, 165, 233, 0.72);
-  border-color: rgba(254, 240, 138, 0.8);
+  background: rgba(14, 165, 233, 0.75);
+  border-color: rgba(254, 240, 138, 0.85);
   color: #ffffff;
   box-shadow: 0 0 14px rgba(56, 189, 248, 0.55);
 }
@@ -458,7 +472,7 @@ body,
   grid-column: 2;
   grid-row: 2;
   border-radius: 50%;
-  background: rgba(3, 24, 43, 0.5);
+  background: rgba(3, 24, 43, 0.52);
   border: 1px solid rgba(148, 210, 255, 0.16);
   display: flex;
   align-items: center;
@@ -473,6 +487,100 @@ body,
   grid-row: 3;
 }
 
+/* Center stack: Dash / Bite Boost + Swap */
+.fe-center-controls {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.fe-dash-btn {
+  position: relative;
+  overflow: hidden;
+  min-width: 72px;
+  height: 44px;
+  padding: 0 11px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(56, 189, 248, 0.55);
+  background: rgba(4, 24, 44, 0.72);
+  color: #f8fafc;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  touch-action: none;
+}
+
+.fe-dash-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.45), rgba(2, 132, 199, 0.65));
+  pointer-events: none;
+  transition: height 0.08s linear;
+}
+
+.fe-dash-label {
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.fe-dash-btn.ready {
+  border-color: rgba(253, 224, 71, 0.85);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.45);
+}
+
+.fe-dash-btn.active {
+  border-color: #fef08a;
+  background: rgba(14, 165, 233, 0.85);
+  transform: scale(0.95);
+}
+
+.fe-dash-btn.cooling {
+  border-color: rgba(148, 210, 255, 0.25);
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.fe-dash-btn:disabled {
+  cursor: default;
+}
+
+.fe-swap-btn {
+  pointer-events: auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 210, 255, 0.22);
+  background: rgba(4, 22, 42, 0.52);
+  color: rgba(186, 230, 253, 0.88);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.12s ease;
+}
+
+.fe-swap-btn:active {
+  transform: scale(0.92);
+}
+
 /* ==================== 360° ROTARY DIAL ==================== */
 .fe-knob-zone {
   pointer-events: auto;
@@ -483,8 +591,8 @@ body,
 
 .fe-knob-outer {
   position: relative;
-  width: 132px;
-  height: 132px;
+  width: 126px;
+  height: 126px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, rgba(14, 116, 144, 0.34), rgba(4, 22, 42, 0.62));
   border: 1.5px solid rgba(125, 211, 252, 0.3);
@@ -518,8 +626,8 @@ body,
 
 .fe-knob-dial {
   position: relative;
-  width: 70px;
-  height: 70px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
   background: linear-gradient(150deg, rgba(56, 189, 248, 0.88), rgba(3, 105, 161, 0.92));
   border: 2px solid rgba(224, 242, 254, 0.85);
@@ -536,16 +644,16 @@ body,
 .fe-knob-pointer {
   position: absolute;
   right: 5px;
-  width: 14px;
-  height: 7px;
+  width: 13px;
+  height: 6px;
   border-radius: 999px;
   background: #fef08a;
   box-shadow: 0 0 8px rgba(254, 240, 138, 0.9);
 }
 
 .fe-knob-center-dot {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: rgba(4, 24, 44, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -555,32 +663,7 @@ body,
   justify-content: center;
 }
 
-.fe-swap-btn {
-  pointer-events: auto;
-  align-self: flex-end;
-  margin-bottom: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 210, 255, 0.22);
-  background: rgba(4, 22, 42, 0.5);
-  color: rgba(186, 230, 253, 0.88);
-  font-family: var(--font-ui);
-  font-size: 10.5px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: transform 0.12s ease;
-}
-
-.fe-swap-btn:active {
-  transform: scale(0.92);
-}
-
-/* ==================== SPECIES ENCYCLOPEDIA & GAME OVER MODALS ==================== */
+/* ==================== MODALS (START, PAUSE, SPECIES, SCORES, PROMO, GAME OVER) ==================== */
 .fe-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -590,7 +673,10 @@ body,
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 18px;
+  padding: calc(14px + env(safe-area-inset-top, 0px))
+    calc(14px + env(safe-area-inset-right, 0px))
+    calc(14px + env(safe-area-inset-bottom, 0px))
+    calc(14px + env(safe-area-inset-left, 0px));
   z-index: 60;
 }
 
@@ -600,11 +686,11 @@ body,
 
 .fe-modal-card {
   width: 100%;
-  max-width: 520px;
-  max-height: 82dvh;
+  max-width: 480px;
+  max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   background: linear-gradient(165deg, rgba(8, 42, 70, 0.96), rgba(3, 20, 36, 0.98));
   border: 1px solid rgba(125, 211, 252, 0.3);
-  border-radius: 24px;
+  border-radius: 22px;
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
   display: flex;
   flex-direction: column;
@@ -615,8 +701,14 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(148, 210, 255, 0.14);
+}
+
+.fe-menu-header {
+  width: 100%;
+  padding: 0 0 12px;
+  margin-bottom: 12px;
 }
 
 .fe-modal-title {
@@ -640,6 +732,8 @@ body,
   width: 32px;
   height: 32px;
   border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -650,18 +744,18 @@ body,
   padding: 14px;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 9px;
 }
 
 .fe-species-card {
-  padding: 11px;
-  border-radius: 16px;
+  padding: 10px;
+  border-radius: 15px;
   background: rgba(15, 36, 62, 0.56);
   border: 1px solid rgba(148, 210, 255, 0.16);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .fe-species-top {
@@ -691,14 +785,16 @@ body,
   font-weight: 700;
 }
 
-/* ==================== GAME OVER MODAL ==================== */
+/* ==================== START, PAUSE & GAME OVER CARDS ==================== */
 .fe-gameover-card {
   width: 100%;
-  max-width: 340px;
-  padding: 26px 22px 22px;
-  border-radius: 26px;
+  max-width: 350px;
+  max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  padding: 22px 20px 20px;
+  border-radius: 24px;
   background: linear-gradient(165deg, rgba(8, 42, 70, 0.96), rgba(3, 20, 36, 0.98));
-  border: 1px solid rgba(125, 211, 252, 0.3);
+  border: 1px solid rgba(125, 211, 252, 0.32);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
@@ -707,26 +803,44 @@ body,
 }
 
 .fe-gameover-emblem {
-  width: 72px;
-  height: 72px;
-  border-radius: 22px;
+  width: 70px;
+  height: 70px;
+  border-radius: 20px;
   background: rgba(14, 165, 233, 0.14);
   border: 1px solid rgba(125, 211, 252, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .fe-gameover-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 23px;
+  font-size: 24px;
   color: #f8fafc;
 }
 
+.fe-start-subtitle {
+  margin: 6px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #bae6fd;
+}
+
+.fe-start-best {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: rgba(15, 36, 62, 0.65);
+  border: 1px solid rgba(148, 210, 255, 0.18);
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
 .fe-gameover-rank {
-  margin: 4px 0 18px;
+  margin: 4px 0 16px;
   font-size: 12.5px;
   font-weight: 700;
   color: #34d399;
@@ -737,11 +851,11 @@ body,
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .fe-stat-box {
-  padding: 10px 6px;
+  padding: 9px 6px;
   border-radius: 14px;
   background: rgba(15, 36, 62, 0.65);
   border: 1px solid rgba(148, 210, 255, 0.16);
@@ -752,13 +866,13 @@ body,
 
 .fe-stat-num {
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: #fef08a;
 }
 
 .fe-stat-lbl {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   color: #94a3b8;
   text-transform: uppercase;
@@ -767,14 +881,14 @@ body,
 
 .fe-play-again-btn {
   width: 100%;
-  height: 46px;
+  height: 44px;
   border: none;
   border-radius: 14px;
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: #ffffff;
   font-family: var(--font-display);
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15.5px;
+  font-weight: 800;
   letter-spacing: 0.02em;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(14, 165, 233, 0.35);
@@ -785,26 +899,322 @@ body,
   transform: scale(0.96);
 }
 
-@media (max-width: 440px) {
+.fe-compact-cta {
+  height: 38px;
+  font-size: 13.5px;
+}
+
+.fe-modal-btn-row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.fe-menu-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fe-secondary-btn,
+.fe-danger-btn {
+  flex: 1;
+  width: 100%;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 210, 255, 0.22);
+  background: rgba(15, 36, 62, 0.72);
+  color: #e0f2fe;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.fe-danger-btn {
+  border-color: rgba(251, 113, 133, 0.48);
+  background: rgba(136, 19, 55, 0.45);
+  color: #fecdd3;
+}
+
+.fe-secondary-btn:active,
+.fe-danger-btn:active {
+  transform: scale(0.96);
+}
+
+/* ==================== LEADERBOARD & MORE GAMES ==================== */
+.fe-scores-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.fe-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #bae6fd;
+}
+
+.fe-text-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 210, 255, 0.25);
+  background: rgba(3, 20, 36, 0.82);
+  color: #f8fafc;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.fe-scores-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fe-score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(15, 36, 62, 0.65);
+  border: 1px solid rgba(148, 210, 255, 0.14);
+  font-size: 12px;
+}
+
+.fe-score-player {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fe-score-val {
+  color: #fef08a;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.fe-score-empty {
+  padding: 14px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.fe-promo-list {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  overflow-y: auto;
+}
+
+.fe-promo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 13px;
+  border-radius: 15px;
+  background: rgba(15, 36, 62, 0.65);
+  border: 1px solid rgba(148, 210, 255, 0.2);
+  color: #f8fafc;
+  text-decoration: none;
+  transition: transform 0.12s ease;
+}
+
+.fe-promo-card.featured {
+  background: linear-gradient(145deg, rgba(168, 85, 247, 0.24), rgba(14, 165, 233, 0.2));
+  border-color: rgba(253, 224, 71, 0.6);
+}
+
+.fe-promo-card:active {
+  transform: scale(0.98);
+}
+
+.fe-promo-badge {
+  align-self: flex-start;
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #052e16;
+  background: #fde047;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.fe-promo-title {
+  font-size: 14px;
+}
+
+.fe-promo-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #bae6fd;
+}
+
+.fe-promo-cta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #fde047;
+}
+
+/* ==================== COMPACT 360px PORTRAIT TIGHTENING ==================== */
+@media (max-width: 420px) {
+  .fe-score-card {
+    padding: 5px 8px 5px 6px;
+    gap: 6px;
+  }
+
+  .fe-emblem {
+    width: 28px;
+    height: 28px;
+  }
+
+  .fe-eaten-value {
+    font-size: 18px;
+  }
+
+  .fe-score-sub {
+    font-size: 9.5px;
+  }
+
+  .fe-pill-btn,
+  .fe-icon-btn {
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .fe-icon-btn {
+    width: 32px;
+  }
+
+  .fe-pill-btn {
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .fe-hide-xs {
+    display: none;
+  }
+
   .fe-dpad-grid {
-    grid-template-columns: repeat(3, 42px);
-    grid-template-rows: repeat(3, 42px);
-    gap: 4px;
-    padding: 6px;
+    grid-template-columns: repeat(3, 38px);
+    grid-template-rows: repeat(3, 38px);
+    gap: 3px;
+    padding: 5px;
+    border-radius: 22px;
   }
 
   .fe-arrow-btn {
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+  }
+
+  .fe-dash-btn {
+    min-width: 64px;
+    height: 38px;
+    padding: 0 8px;
+    font-size: 11px;
+    border-radius: 13px;
   }
 
   .fe-knob-outer {
-    width: 118px;
-    height: 118px;
+    width: 108px;
+    height: 108px;
   }
 
   .fe-knob-dial {
-    width: 64px;
-    height: 64px;
+    width: 58px;
+    height: 58px;
+  }
+}
+
+/* ==================== LANDSCAPE COMPACT CONTROLS (>70% OPEN OCEAN) ==================== */
+@media (orientation: landscape) {
+  .fe-top-hud {
+    top: max(6px, env(safe-area-inset-top));
+    gap: 4px;
+  }
+
+  .fe-score-card {
+    padding: 4px 10px 4px 7px;
+    border-radius: 14px;
+  }
+
+  .fe-emblem {
+    width: 28px;
+    height: 28px;
+  }
+
+  .fe-eaten-value {
+    font-size: 17px;
+  }
+
+  .fe-score-sub {
+    font-size: 10px;
+  }
+
+  .fe-pill-btn,
+  .fe-icon-btn {
+    height: 30px;
+    border-radius: 9px;
+  }
+
+  .fe-icon-btn {
+    width: 30px;
+  }
+
+  .fe-controls-dock {
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .fe-dpad-grid {
+    grid-template-columns: repeat(3, 34px);
+    grid-template-rows: repeat(3, 34px);
+    gap: 3px;
+    padding: 5px;
+    border-radius: 20px;
+  }
+
+  .fe-arrow-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .fe-knob-outer {
+    width: 96px;
+    height: 96px;
+  }
+
+  .fe-knob-dial {
+    width: 52px;
+    height: 52px;
+  }
+
+  .fe-dash-btn {
+    min-width: 66px;
+    height: 34px;
+    font-size: 11px;
+    border-radius: 12px;
+  }
+
+  .fe-center-controls {
+    gap: 4px;
+    margin-bottom: 2px;
   }
 }

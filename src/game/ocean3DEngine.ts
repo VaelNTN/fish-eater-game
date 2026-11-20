@@ -93,6 +93,11 @@ export interface HudSnapshot {
   lives: number;
   maxLives: number;
   isGameOver: boolean;
+  started: boolean;
+  paused: boolean;
+  dashActive: boolean;
+  dashCooldownRatio: number;
+  dashCooldownSec: number;
 }
 
 const WORLD_HALF_X = 76;
@@ -106,6 +111,7 @@ export class Ocean3DEngine {
   private sfx: SoundFX;
   private onHudChange: (snap: HudSnapshot) => void;
   private onToast: (msg: string) => void;
+  private onGameOver?: (fishEaten: number, sizeCm: number, rankNumber: number, skinId: string) => void;
 
   private rafId: number | null = null;
   private lastTs = 0;
@@ -119,6 +125,8 @@ export class Ocean3DEngine {
   public lives = 3;
   public readonly maxLives = 3;
   public isGameOver = false;
+  public started = false;
+  public paused = false;
 
   private playerX = 0;
   private playerY = 0;
@@ -134,6 +142,12 @@ export class Ocean3DEngine {
   private chompCombo = 0;
   private chompComboTimer = 0;
   private trailTimer = 0;
+
+  private dashTimer = 0;
+  private dashCooldown = 0;
+  private readonly dashDuration = 0.42;
+  private readonly dashMaxCooldown = 3.2;
+  private dashHudTimer = 0;
 
   private camX = 0;
   private camY = 0;
@@ -162,7 +176,8 @@ export class Ocean3DEngine {
     initialColorId: string,
     bestFishEaten: number,
     onHudChange: (snap: HudSnapshot) => void,
-    onToast: (msg: string) => void
+    onToast: (msg: string) => void,
+    onGameOver?: (fishEaten: number, sizeCm: number, rankNumber: number, skinId: string) => void
   ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -170,10 +185,11 @@ export class Ocean3DEngine {
     this.bestFishEaten = bestFishEaten;
     this.onHudChange = onHudChange;
     this.onToast = onToast;
+    this.onGameOver = onGameOver;
     this.setPiranhaColor(initialColorId);
 
     this.init3DScenery();
-    this.resetRun();
+    this.resetRun(false);
   }
 
   public setPiranhaColor(colorId: string): void {
@@ -203,11 +219,86 @@ export class Ocean3DEngine {
     }
   }
 
-  public resetRun(): void {
+  public startGame(): void {
+    if (this.started) return;
+    this.started = true;
+    this.paused = false;
+    this.invulnTimer = 2.0;
+    this.lastTs = performance.now();
+    this.emitHud();
+  }
+
+  public setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    if (!paused) {
+      this.lastTs = performance.now();
+    }
+    this.emitHud();
+  }
+
+  public isPaused(): boolean {
+    return this.paused;
+  }
+
+  public triggerDash(): boolean {
+    if (!this.started || this.paused || this.isGameOver || this.dashCooldown > 0) {
+      return false;
+    }
+    this.dashTimer = this.dashDuration;
+    this.dashCooldown = this.dashMaxCooldown;
+    this.biteAnim = 1.0;
+
+    // Immediate burst velocity in current input or facing direction
+    let dx = 0;
+    let dy = 0;
+    if (this.input.left) dx -= 1;
+    if (this.input.right) dx += 1;
+    if (this.input.up) dy += 1;
+    if (this.input.down) dy -= 1;
+    if (this.input.knobActive && this.input.knobStrength > 0.08) {
+      dx += Math.cos(this.input.knobAngleRad);
+      dy += -Math.sin(this.input.knobAngleRad);
+    }
+    const mag = Math.hypot(dx, dy);
+    if (mag > 0.05) {
+      dx /= mag;
+      dy /= mag;
+    } else {
+      dx = this.playerFacing;
+      dy = 0;
+    }
+    this.playerVx = dx * 42;
+    this.playerVy = dy * 42;
+    if (Math.abs(dx) > 0.15) {
+      this.playerFacing = dx >= 0 ? 1 : -1;
+    }
+
+    this.sfx.playDash();
+    this.spawnChompParticles(this.playerX, this.playerY, this.playerZ, '#38bdf8', 'DASH!');
+    for (let i = 0; i < 6 && this.bubbles.length < 80; i++) {
+      this.bubbles.push({
+        x: this.playerX - dx * (1.8 + Math.random() * 2.2),
+        y: this.playerY - dy * (1.8 + Math.random() * 2.2) + (Math.random() - 0.5) * 2,
+        z: this.playerZ + (Math.random() - 0.5) * 2,
+        radius: 0.9 + Math.random() * 1.2,
+        speedY: 4 + Math.random() * 3.5,
+        wobblePhase: Math.random() * Math.PI * 2,
+        fromTrail: true,
+        alpha: 0.9,
+      });
+    }
+    this.emitHud();
+    return true;
+  }
+
+  public resetRun(autoStart = true): void {
     this.fishEaten = 0;
     this.playerSize = 1.0;
     this.lives = this.maxLives;
     this.isGameOver = false;
+    this.started = autoStart;
+    this.paused = false;
     this.playerX = 0;
     this.playerY = 0;
     this.playerZ = 0;
@@ -217,8 +308,12 @@ export class Ocean3DEngine {
     this.playerFacing = 1;
     this.playerPitch = 0;
     this.biteAnim = 0;
-    this.invulnTimer = 1.5;
+    this.invulnTimer = 2.0;
     this.chompCombo = 0;
+    this.dashTimer = 0;
+    this.dashCooldown = 0;
+    this.dashHudTimer = 0;
+    this.hunterCheckTimer = 0;
     this.fishes = [];
     this.particles = [];
     this.rebalance5050Ecosystem(true);
@@ -382,6 +477,8 @@ export class Ocean3DEngine {
   }
 
   private update(dt: number): void {
+    if (this.paused) return;
+
     this.time += dt;
     if (this.invulnTimer > 0) this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     if (this.biteAnim > 0) this.biteAnim = Math.max(0, this.biteAnim - dt * 4.5);
@@ -390,7 +487,19 @@ export class Ocean3DEngine {
       if (this.chompComboTimer <= 0) this.chompCombo = 0;
     }
 
-    if (!this.isGameOver) {
+    // Dash timer & cooldown tracking
+    const wasCooling = this.dashCooldown > 0 || this.dashTimer > 0;
+    if (this.dashTimer > 0) this.dashTimer = Math.max(0, this.dashTimer - dt);
+    if (this.dashCooldown > 0) this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    if (wasCooling && this.started && !this.isGameOver) {
+      this.dashHudTimer += dt;
+      if (this.dashHudTimer >= 0.08 || this.dashCooldown === 0) {
+        this.dashHudTimer = 0;
+        this.emitHud();
+      }
+    }
+
+    if (this.started && !this.isGameOver) {
       // 1. Update Player Piranha Movement
       let dirX = 0;
       let dirY = 0;
@@ -409,15 +518,16 @@ export class Ocean3DEngine {
       const normX = inputMag > 1 ? dirX / inputMag : dirX;
       const normY = inputMag > 1 ? dirY / inputMag : dirY;
 
-      const maxSpeed = 24;
-      const targetVx = normX * maxSpeed;
+      const dashMult = this.dashTimer > 0 ? 1.72 : 1.0;
+      const maxSpeed = 24 * dashMult;
+      const targetVx = this.dashTimer > 0 && inputMag < 0.08 ? this.playerFacing * maxSpeed : normX * maxSpeed;
       const targetVy = normY * maxSpeed;
       const targetVz =
         inputMag > 0.1
           ? Math.sin(this.time * 1.6) * 7.5 + normY * 3.5
           : -this.playerZ * 0.4;
 
-      const accel = inputMag > 0.05 ? 9.5 : 5.0;
+      const accel = this.dashTimer > 0 ? 15.0 : inputMag > 0.05 ? 9.5 : 5.0;
       this.playerVx += (targetVx - this.playerVx) * Math.min(1, accel * dt);
       this.playerVy += (targetVy - this.playerVy) * Math.min(1, accel * dt);
       this.playerVz += (targetVz - this.playerVz) * Math.min(1, 3.5 * dt);
@@ -449,15 +559,16 @@ export class Ocean3DEngine {
       if (Math.abs(this.playerVx) > 0.6) {
         this.playerFacing = this.playerVx >= 0 ? 1 : -1;
       }
-      const targetPitch = Math.max(-0.55, Math.min(0.55, (this.playerVy / maxSpeed) * 0.65));
+      const targetPitch = Math.max(-0.55, Math.min(0.55, (this.playerVy / 24) * 0.65));
       this.playerPitch += (targetPitch - this.playerPitch) * Math.min(1, 10 * dt);
 
       const swimSpeed = Math.hypot(this.playerVx, this.playerVy, this.playerVz);
       this.playerTailPhase += dt * (7 + swimSpeed * 0.75);
 
-      // Subtle swim bubble trail behind fast-moving piranha
+      // Subtle swim bubble trail behind fast-moving piranha (denser during Dash!)
+      const trailStep = this.dashTimer > 0 ? 0.045 : 0.14;
       this.trailTimer += dt * (swimSpeed > 8 ? 1 : 0.2);
-      if (swimSpeed > 9 && this.trailTimer > 0.14 && this.bubbles.length < 70) {
+      if (swimSpeed > 9 && this.trailTimer > trailStep && this.bubbles.length < 78) {
         this.trailTimer = 0;
         this.bubbles.push({
           x: this.playerX - this.playerFacing * 2.2,
@@ -467,7 +578,7 @@ export class Ocean3DEngine {
           speedY: 4.5 + Math.random() * 3.0,
           wobblePhase: Math.random() * Math.PI * 2,
           fromTrail: true,
-          alpha: 0.75,
+          alpha: this.dashTimer > 0 ? 0.9 : 0.75,
         });
       }
 
@@ -481,6 +592,12 @@ export class Ocean3DEngine {
         this.hunterCheckTimer = 0;
         this.evaluateOnePercentHunterRule();
       }
+    } else if (!this.started) {
+      // Gentle idle hover animation behind Start overlay
+      this.playerY = Math.sin(this.time * 1.6) * 1.4;
+      this.playerTailPhase += dt * 7.5;
+      this.camX += (0 - this.camX) * Math.min(1, 3 * dt);
+      this.camY += (0 - this.camY) * Math.min(1, 3 * dt);
     }
 
     // 3. Update All 32 Fish & Collisions
@@ -500,7 +617,7 @@ export class Ocean3DEngine {
         f.isHunter = false;
       }
 
-      if (f.isHunter && !this.isGameOver) {
+      if (f.isHunter && this.started && !this.isGameOver) {
         const dx = this.playerX - f.x;
         const dy = this.playerY - f.y;
         const dz = this.playerZ - f.z;
@@ -509,7 +626,7 @@ export class Ocean3DEngine {
         f.vx += ((dx / dist) * huntSpeed - f.vx) * Math.min(1, 4.0 * dt);
         f.vy += ((dy / dist) * huntSpeed - f.vy) * Math.min(1, 4.0 * dt);
         f.vz += ((dz / dist) * huntSpeed - f.vz) * Math.min(1, 4.0 * dt);
-      } else if (f.wasOutgrownHunter && !this.isGameOver) {
+      } else if (f.wasOutgrownHunter && this.started && !this.isGameOver) {
         const dx = f.x - this.playerX;
         const dy = f.y - this.playerY;
         const dist = Math.max(0.01, Math.hypot(dx, dy));
@@ -561,10 +678,11 @@ export class Ocean3DEngine {
       f.pitchRad = Math.max(-0.48, Math.min(0.48, f.vy * 0.04));
       f.tailPhase += dt * (6.5 + Math.hypot(f.vx, f.vy) * 0.65);
 
-      if (this.isGameOver) continue;
+      if (!this.started || this.isGameOver) continue;
 
       const fishVisualRatio = Math.pow(f.size / this.playerSize, 0.42);
-      const hitRadiusXY = 3.2 + Math.min(2.6, fishVisualRatio * 1.6);
+      const dashReachBonus = this.dashTimer > 0 ? 1.15 : 0;
+      const hitRadiusXY = 3.2 + dashReachBonus + Math.min(2.6, fishVisualRatio * 1.6);
       const distXY = Math.hypot(f.x - this.playerX, f.y - this.playerY);
       const distZ = Math.abs(f.z - this.playerZ);
 
@@ -612,6 +730,9 @@ export class Ocean3DEngine {
           if (this.lives <= 0) {
             this.isGameOver = true;
             f.isHunter = false;
+            const sizeCm = Math.round(12 * Math.pow(this.playerSize, 0.85));
+            const rankNow = getPiranhaRank(this.fishEaten).rank;
+            this.onGameOver?.(this.fishEaten, sizeCm, rankNow, this.playerColor.id);
           } else {
             this.onToast(`Bitten by ${f.species.name} — eat 2 small fish to outgrow it`);
           }
@@ -769,6 +890,11 @@ export class Ocean3DEngine {
       lives: this.lives,
       maxLives: this.maxLives,
       isGameOver: this.isGameOver,
+      started: this.started,
+      paused: this.paused,
+      dashActive: this.dashTimer > 0,
+      dashCooldownRatio: Math.max(0, Math.min(1, this.dashCooldown / this.dashMaxCooldown)),
+      dashCooldownSec: Math.ceil(this.dashCooldown * 10) / 10,
     });
   }
 
@@ -941,7 +1067,7 @@ export class Ocean3DEngine {
         ctx.arc(p.sx, p.sy, pt.size, 0, Math.PI * 2);
         ctx.stroke();
       } else if (pt.text) {
-        ctx.font = '800 13px "Plus Jakarta Sans", system-ui, sans-serif';
+        ctx.font = '800 13px system-ui, -apple-system, sans-serif';
         ctx.textAlign = 'center';
         ctx.strokeStyle = 'rgba(3, 24, 43, 0.85)';
         ctx.lineWidth = 3.5;
@@ -971,9 +1097,9 @@ export class Ocean3DEngine {
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, w, h);
 
-    // 8. Sleek Off-Screen Hunter Radar Arrow
-    if (!this.isGameOver) {
-      this.drawHunterRadarArrow(ctx, w, h);
+    // 8. Sleek Screen-Edge Predator & 1% Hunter Radar Arrows
+    if (this.started && !this.isGameOver) {
+      this.drawPredatorRadarArrows(ctx, w, h);
     }
 
     ctx.restore();
@@ -1222,6 +1348,23 @@ export class Ocean3DEngine {
     const strokeW = Math.max(1.4, r * 0.065);
 
     // 1. Sleek Forked Caudal Tail Fin
+    // 0. Dash / Bite Boost Speed-Wake Streaks
+    if (this.dashTimer > 0) {
+      const wakeAlpha = Math.min(0.85, (this.dashTimer / this.dashDuration) * 0.9);
+      ctx.save();
+      ctx.strokeStyle = `rgba(125, 211, 252, ${wakeAlpha.toFixed(2)})`;
+      ctx.lineWidth = Math.max(1.5, r * 0.08);
+      ctx.lineCap = 'round';
+      for (const offsetY of [-r * 0.5, 0, r * 0.5]) {
+        ctx.beginPath();
+        ctx.moveTo(-r * 1.15, offsetY);
+        ctx.lineTo(-r * (2.05 + (offsetY === 0 ? 0.35 : 0)), offsetY * 1.1);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 1. Forked Animated Tail Fin
     ctx.fillStyle = this.playerColor.fin;
     ctx.strokeStyle = this.playerColor.outline;
     ctx.lineWidth = strokeW;
@@ -1646,7 +1789,7 @@ export class Ocean3DEngine {
     bg: string
   ): void {
     ctx.save();
-    ctx.font = '800 9px "Plus Jakarta Sans", system-ui, sans-serif';
+    ctx.font = '800 9px system-ui, -apple-system, sans-serif';
     const textW = ctx.measureText(label).width;
     const padX = 6;
     const pillW = textW + padX * 2;
@@ -1664,31 +1807,78 @@ export class Ocean3DEngine {
     ctx.restore();
   }
 
-  private drawHunterRadarArrow(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-    const hunter = this.fishes.find((f) => f.isHunter);
-    if (!hunter) return;
-    const p = this.project3D(hunter.x, hunter.y, hunter.z, w, h);
-    if (!p) return;
-    if (p.sx >= 24 && p.sx <= w - 24 && p.sy >= 72 && p.sy <= h - 96) return;
+  private drawPredatorRadarArrows(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    const padX = 24;
+    const padTop = Math.min(96, h * 0.22);
+    const padBottom = Math.min(126, h * 0.26);
 
-    const cx = Math.max(28, Math.min(w - 28, p.sx));
-    const cy = Math.max(82, Math.min(h - 108, p.sy));
-    const ang = Math.atan2(p.sy - h * 0.5, p.sx - w * 0.5);
+    const drawChevron = (
+      sx: number,
+      sy: number,
+      isHunter: boolean,
+      proximity: number
+    ): void => {
+      const cx = Math.max(padX, Math.min(w - padX, sx));
+      const cy = Math.max(padTop, Math.min(h - padBottom, sy));
+      const ang = Math.atan2(sy - h * 0.5, sx - w * 0.5);
+      const pulse = isHunter ? 1 + Math.sin(this.time * 10) * 0.14 : 1;
+      const scale = (isHunter ? 1.15 : 0.82) * pulse;
 
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(ang);
-    ctx.fillStyle = 'rgba(225, 29, 72, 0.92)';
-    ctx.strokeStyle = '#fecdd3';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(11, 0);
-    ctx.lineTo(-7, -7);
-    ctx.lineTo(-4, 0);
-    ctx.lineTo(-7, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(ang);
+      ctx.scale(scale, scale);
+
+      if (isHunter) {
+        ctx.fillStyle = 'rgba(225, 29, 72, 0.94)';
+        ctx.strokeStyle = '#fecdd3';
+        ctx.lineWidth = 1.6;
+        ctx.shadowColor = 'rgba(244, 63, 94, 0.75)';
+        ctx.shadowBlur = 10;
+      } else {
+        const alpha = Math.max(0.28, Math.min(0.75, proximity * 0.78));
+        ctx.fillStyle = `rgba(251, 146, 60, ${alpha.toFixed(2)})`;
+        ctx.strokeStyle = `rgba(254, 240, 138, ${(alpha + 0.15).toFixed(2)})`;
+        ctx.lineWidth = 1.2;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(11, 0);
+      ctx.lineTo(-7, -6.8);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-7, 6.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    // 1. Always highlight active 1% hunter(s) when off-screen or near edge
+    for (const f of this.fishes) {
+      if (!f.isHunter) continue;
+      const p = this.project3D(f.x, f.y, f.z, w, h);
+      if (!p) continue;
+      if (p.sx >= 28 && p.sx <= w - 28 && p.sy >= padTop && p.sy <= h - padBottom) continue;
+      drawChevron(p.sx, p.sy, true, 1);
+    }
+
+    // 2. Subtle screen-edge radar chevrons for up to 3 nearby giant predators
+    const nearbyGiants = this.fishes
+      .filter((f) => !f.isHunter && f.size > this.playerSize * 1.15)
+      .map((f) => ({
+        f,
+        dist: Math.hypot(f.x - this.playerX, f.y - this.playerY),
+      }))
+      .filter((item) => item.dist < 44)
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 3);
+
+    for (const { f, dist } of nearbyGiants) {
+      const p = this.project3D(f.x, f.y, f.z, w, h);
+      if (!p) continue;
+      if (p.sx >= 26 && p.sx <= w - 26 && p.sy >= padTop && p.sy <= h - padBottom) continue;
+      const proximity = Math.max(0, 1 - dist / 44);
+      drawChevron(p.sx, p.sy, false, proximity);
+    }
   }
 }
